@@ -59,11 +59,11 @@ function getTodayRange(): { start: string; end: string } {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE });
   const todayStr = formatter.format(now);
-  const berlinOffset = new Intl.DateTimeFormat('en', {
-    timeZone: TIMEZONE,
-    timeZoneName: 'shortOffset',
-  }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value || '+02:00';
-  const offset = berlinOffset.replace('GMT', '') || '+02:00';
+  // Use simple approach: check if DST (CEST = +02:00) or not (CET = +01:00)
+  // Berlin is UTC+2 from last Sunday of March to last Sunday of October
+  const month = now.getMonth(); // 0-indexed
+  const isCEST = month >= 2 && month <= 9; // March-October (roughly)
+  const offset = isCEST ? '+02:00' : '+01:00';
   return {
     start: `${todayStr}T00:00:00${offset}`,
     end: `${todayStr}T23:59:59${offset}`,
@@ -239,12 +239,16 @@ export async function fetchAllOpenerData(): Promise<OpenerData[]> {
     throw new Error('Keine Close API Keys konfiguriert');
   }
 
+  console.log(`Fetching data from ${clients.length} Close accounts...`);
   const results = await Promise.allSettled(clients.map(c => c.getOpenerData()));
 
+  const errors: string[] = [];
   const merged = new Map<string, OpenerData>();
   for (const result of results) {
     if (result.status === 'rejected') {
-      console.error('Close API fetch failed:', result.reason);
+      const errMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      console.error('Close API fetch failed:', errMsg);
+      errors.push(errMsg);
       continue;
     }
     for (const opener of result.value) {
@@ -266,7 +270,7 @@ export async function fetchAllOpenerData(): Promise<OpenerData[]> {
   }
 
   if (merged.size === 0 && results.every(r => r.status === 'rejected')) {
-    throw new Error('Beide Close Accounts nicht erreichbar');
+    throw new Error(`Beide Close Accounts nicht erreichbar: ${errors.join(' | ')}`);
   }
 
   const data = Array.from(merged.values());
