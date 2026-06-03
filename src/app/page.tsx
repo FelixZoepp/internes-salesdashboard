@@ -6,6 +6,7 @@ import EventTicker from '@/components/EventTicker';
 import AppointmentOverlay from '@/components/AppointmentOverlay';
 import SoundManager from '@/components/SoundManager';
 import RaceView from '@/components/RaceView';
+import TeamBattle from '@/components/TeamBattle';
 
 interface DashboardData {
   openers: Array<{
@@ -33,13 +34,17 @@ interface DashboardData {
     dailyGoal: number;
     weeklyGoal: number;
     weeklyAppointments: number;
+    teams?: {
+      felix: { name: string; dials: number; appointments: number; points: number };
+      hendrik: { name: string; dials: number; appointments: number; points: number };
+    };
   };
   events: Array<{ type: string; message: string; timestamp: number; openerName: string }>;
   timestamp: number;
 }
 
-type ViewMode = 'race-dials' | 'race-appointments';
-const VIEWS: ViewMode[] = ['race-dials', 'race-appointments'];
+type ViewMode = 'race-dials' | 'race-appointments' | 'team-battle';
+const VIEWS: ViewMode[] = ['race-dials', 'race-appointments', 'team-battle'];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -89,10 +94,13 @@ export default function Dashboard() {
     return () => clearInterval(i);
   }, []);
 
-  // Auto-rotate between Dials and Settings
+  // Auto-rotate between 3 views
   useEffect(() => {
     const interval = setInterval(() => {
-      setViewMode(prev => prev === 'race-dials' ? 'race-appointments' : 'race-dials');
+      setViewMode(prev => {
+        const idx = VIEWS.indexOf(prev);
+        return VIEWS[(idx + 1) % VIEWS.length];
+      });
     }, 15000);
     return () => clearInterval(interval);
   }, []);
@@ -164,7 +172,7 @@ export default function Dashboard() {
                     color: viewMode === view ? 'var(--za-fg)' : 'var(--za-fg-4)',
                   }}
                 >
-                  {view === 'race-dials' ? '📞 Protokolle' : '📅 Settings'}
+                  {view === 'race-dials' ? '📞 Protokolle' : view === 'race-appointments' ? '📅 Settings' : '⚔️ Battle'}
                 </button>
               ))}
             </div>
@@ -194,11 +202,23 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content — Race Views */}
+      {/* Main Content */}
       <main className="relative z-10 flex-1 p-8">
-        <div className="animate-fade-up h-full" key={viewMode}>
-          <RaceView openers={data.openers} metric={viewMode === 'race-dials' ? 'dials' : 'appointments'} />
-        </div>
+        {viewMode === 'race-dials' && (
+          <div className="animate-fade-up h-full" key="race-dials">
+            <RaceView openers={data.openers} metric="dials" />
+          </div>
+        )}
+        {viewMode === 'race-appointments' && (
+          <div className="animate-fade-up h-full" key="race-appointments">
+            <RaceView openers={data.openers} metric="appointments" />
+          </div>
+        )}
+        {viewMode === 'team-battle' && data.teamStats.teams && (
+          <div className="animate-fade-up h-full" key="team-battle">
+            <TeamBattle teams={data.teamStats.teams} openers={data.openers} />
+          </div>
+        )}
       </main>
 
       {/* Ticker */}

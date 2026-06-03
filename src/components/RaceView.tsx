@@ -15,6 +15,11 @@ interface OpenerStats {
   earnedIncentives: Array<{ id: string; emoji: string; title: string; bonus: string }>;
 }
 
+function parseBonusValue(bonus: string): number {
+  const match = bonus.match(/(\d+)/);
+  return match ? parseInt(match[1]) : 0;
+}
+
 export default function RaceView({ openers, metric = 'dials' }: { openers: OpenerStats[]; metric?: 'dials' | 'appointments' | 'points' }) {
   const sorted = [...openers].sort((a, b) => b[metric] - a[metric]);
   const maxVal = Math.max(...sorted.map(o => o[metric]), 1);
@@ -35,24 +40,19 @@ export default function RaceView({ openers, metric = 'dials' }: { openers: Opene
       }
     });
 
+    prevRanks.current = new Map(sorted.map((o, i) => [o.email, i]));
+
     if (newOvertakes.size > 0) {
       setOvertakes(newOvertakes);
       const timer = setTimeout(() => setOvertakes(new Set()), 3000);
       return () => clearTimeout(timer);
     }
-
-    prevRanks.current = new Map(sorted.map((o, i) => [o.email, i]));
-  }, [sorted]);
-
-  // Update prevRanks after overtake animation
-  useEffect(() => {
-    prevRanks.current = new Map(sorted.map((o, i) => [o.email, i]));
   }, [sorted]);
 
   return (
     <div className="h-full flex flex-col">
       {/* Race header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <span className="text-5xl">🏁</span>
           <div>
@@ -69,13 +69,14 @@ export default function RaceView({ openers, metric = 'dials' }: { openers: Opene
       </div>
 
       {/* Race tracks */}
-      <div className="flex-1 flex flex-col justify-center gap-8">
+      <div className="flex-1 flex flex-col justify-center gap-6">
         {sorted.map((opener, idx) => {
           const val = opener[metric];
           const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
           const isFirst = idx === 0 && val > 0;
           const justOvertook = overtakes.has(opener.email);
           const color = teamColor(opener.team);
+          const bonus = opener.earnedIncentives.reduce((s, inc) => s + parseBonusValue(inc.bonus), 0);
 
           return (
             <div
@@ -104,7 +105,11 @@ export default function RaceView({ openers, metric = 'dials' }: { openers: Opene
                 {opener.earnedIncentives.map(inc => (
                   <span key={inc.id} className="text-2xl">{inc.emoji}</span>
                 ))}
-                {/* Overtake badge */}
+                {bonus > 0 && (
+                  <span className="text-lg font-black px-3 py-0.5 rounded-lg" style={{ background: 'rgba(127, 194, 155, 0.15)', color: 'var(--za-green)', border: '1px solid rgba(127, 194, 155, 0.3)' }}>
+                    +{bonus}€
+                  </span>
+                )}
                 {justOvertook && (
                   <span className="overtake-badge text-base font-black px-3 py-1 rounded-full" style={{
                     background: 'rgba(233, 203, 139, 0.2)',
@@ -131,7 +136,7 @@ export default function RaceView({ openers, metric = 'dials' }: { openers: Opene
                       boxShadow: isFirst ? `0 0 30px ${color}30` : 'none',
                     }}
                   />
-                  {/* Rocket at the tip of the bar */}
+                  {/* Rocket at the tip */}
                   <div
                     className="absolute top-1/2 -translate-y-1/2 transition-all duration-1000 ease-out"
                     style={{ left: `calc(${Math.max(pct, 3)}% - 28px)` }}
@@ -150,11 +155,14 @@ export default function RaceView({ openers, metric = 'dials' }: { openers: Opene
                     </div>
                   )}
                 </div>
-                {/* Value */}
-                <div className="w-28 text-right flex-shrink-0">
+                {/* Value + Points */}
+                <div className="w-32 text-right flex-shrink-0">
                   <span className={`text-4xl font-black ${justOvertook ? 'overtake-value' : ''}`} style={{ color }}>
                     {val}
                   </span>
+                  <div className="text-xs font-semibold" style={{ color: 'var(--za-fg-4)' }}>
+                    {opener.points} Pkt
+                  </div>
                 </div>
               </div>
             </div>
