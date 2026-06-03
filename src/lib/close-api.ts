@@ -31,6 +31,7 @@ export interface OpenerData {
   totalCallDuration: number;
   smsSent: number;
   emailsSent: number;
+  firstAppointmentTime?: string;
 }
 
 // Hardcoded team mapping — wer sind die Caller die gegeneinander battlen
@@ -201,6 +202,9 @@ class CloseClient {
         opener.dials++;
       } else if (category === 'setting') {
         opener.appointments++;
+        if (!opener.firstAppointmentTime || activity.date_created < opener.firstAppointmentTime) {
+          opener.firstAppointmentTime = activity.date_created;
+        }
       }
     }
 

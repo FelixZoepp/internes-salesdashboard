@@ -8,6 +8,7 @@ import AppointmentOverlay from '@/components/AppointmentOverlay';
 import SoundManager from '@/components/SoundManager';
 import RaceView from '@/components/RaceView';
 import TeamBattle from '@/components/TeamBattle';
+import TrophyBoard from '@/components/TrophyBoard';
 
 interface DashboardData {
   openers: Array<{
@@ -25,6 +26,7 @@ interface DashboardData {
     badges: string[];
     avatarEmoji: string;
     team: string;
+    earnedIncentives: Array<{ id: string; emoji: string; title: string; bonus: string }>;
   }>;
   teamStats: {
     totalDials: number;
@@ -43,16 +45,17 @@ interface DashboardData {
   timestamp: number;
 }
 
-type ViewMode = 'leaderboard' | 'team-battle' | 'race-dials' | 'race-appointments';
+type ViewMode = 'leaderboard' | 'team-battle' | 'race-dials' | 'race-appointments' | 'trophies';
 
 const VIEW_LABELS: Record<ViewMode, string> = {
   'leaderboard': '🏅 Ranking',
-  'team-battle': '⚔️ Team Battle',
-  'race-dials': '📞 Protokoll-Rennen',
-  'race-appointments': '📅 Setting-Rennen',
+  'team-battle': '⚔️ Battle',
+  'race-dials': '📞 Protokolle',
+  'race-appointments': '📅 Settings',
+  'trophies': '🏆 Bonus',
 };
 
-const VIEWS: ViewMode[] = ['leaderboard', 'team-battle', 'race-dials', 'race-appointments'];
+const VIEWS: ViewMode[] = ['leaderboard', 'team-battle', 'race-dials', 'race-appointments', 'trophies'];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -204,22 +207,35 @@ export default function Dashboard() {
         </div>
 
         {/* KPI Tiles */}
-        <div className="mt-4 grid grid-cols-4 gap-4">
-          {[
-            { label: 'Team Dials', value: data.teamStats.totalDials, color: 'var(--za-blue-3)' },
-            { label: 'Gespräche', value: data.teamStats.totalConversations, color: 'var(--za-green)' },
-            { label: 'Termine', value: data.teamStats.totalAppointments, color: 'var(--za-blue-5)' },
-            { label: 'Team Punkte', value: data.teamStats.totalPoints, color: 'var(--za-gold)' },
-          ].map(kpi => (
-            <div
-              key={kpi.label}
-              className="panel-glass rounded-xl px-5 py-3 text-center"
-            >
-              <div className="text-3xl font-black" style={{ color: kpi.color }}>{kpi.value}</div>
-              <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>{kpi.label}</div>
+        {(() => {
+          const totalBonusToday = data.openers.reduce((sum, o) => {
+            return sum + o.earnedIncentives.reduce((s, inc) => {
+              const match = inc.bonus.match(/(\d+)/);
+              return s + (match ? parseInt(match[1]) : 0);
+            }, 0);
+          }, 0);
+          return (
+            <div className="mt-4 grid grid-cols-5 gap-4">
+              {[
+                { label: 'Protokolle', value: data.teamStats.totalDials, color: 'var(--za-blue-3)' },
+                { label: 'Settings', value: data.teamStats.totalAppointments, color: 'var(--za-blue-5)' },
+                { label: 'Team Punkte', value: data.teamStats.totalPoints, color: 'var(--za-gold)' },
+                { label: 'Trophäen', value: data.openers.reduce((s, o) => s + o.earnedIncentives.length, 0), color: 'var(--za-gold-2)' },
+                { label: 'Bonus heute', value: totalBonusToday, color: 'var(--za-green)', prefix: '€' },
+              ].map(kpi => (
+                <div
+                  key={kpi.label}
+                  className="panel-glass rounded-xl px-5 py-3 text-center"
+                >
+                  <div className="text-3xl font-black" style={{ color: kpi.color }}>
+                    {'prefix' in kpi ? `${kpi.prefix}${kpi.value}` : kpi.value}
+                  </div>
+                  <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>{kpi.label}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
       </header>
 
       {/* Main Content */}
@@ -260,6 +276,11 @@ export default function Dashboard() {
         {viewMode === 'team-battle' && data.teamStats.teams && (
           <div className="animate-fade-up h-full">
             <TeamBattle teams={data.teamStats.teams} openers={data.openers} />
+          </div>
+        )}
+        {viewMode === 'trophies' && (
+          <div className="animate-fade-up h-full">
+            <TrophyBoard openers={data.openers} />
           </div>
         )}
       </main>

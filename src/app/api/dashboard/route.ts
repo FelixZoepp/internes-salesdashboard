@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchAllOpenerData, OpenerData, TEAM_MEMBERS } from '@/lib/close-api';
 import { getMockData, calculatePoints, MOCK_AVATARS } from '@/lib/mock-data';
 import { MOCK_DATA, LEVELS, TEAM_DAILY_GOAL, TEAM_WEEKLY_GOAL } from '@/lib/config';
+import { INCENTIVES } from '@/lib/incentives';
 
 function getLevel(points: number) {
   let level: { name: string; minPoints: number; color: string } = LEVELS[0];
@@ -27,6 +28,9 @@ export async function GET() {
       const points = calculatePoints(o);
       const level = getLevel(points);
       const teamMember = TEAM_MEMBERS.find(m => m.email === o.email || m.closeUserId === o.closeUserId);
+      const earnedIncentives = INCENTIVES.filter(inc =>
+        inc.check({ appointments: o.appointments, firstAppointmentTime: o.firstAppointmentTime })
+      ).map(inc => ({ id: inc.id, emoji: inc.emoji, title: inc.title, bonus: inc.bonus }));
       return {
         ...o,
         points,
@@ -38,6 +42,7 @@ export async function GET() {
         avatarEmoji: MOCK_DATA ? (MOCK_AVATARS[o.email] || '👤') : (teamMember?.emoji || '👤'),
         displayName: teamMember?.name || o.name,
         team: teamMember?.team || 'unknown',
+        earnedIncentives,
       };
     });
 
