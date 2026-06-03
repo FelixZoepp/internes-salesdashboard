@@ -25,10 +25,10 @@ export default function Leaderboard({ openers, sortBy = 'points' }: { openers: O
   });
 
   const getRankStyle = (rank: number) => {
-    if (rank === 1) return 'bg-gradient-to-r from-yellow-600/30 to-yellow-500/10 border-yellow-500/50';
-    if (rank === 2) return 'bg-gradient-to-r from-gray-400/20 to-gray-300/5 border-gray-400/40';
-    if (rank === 3) return 'bg-gradient-to-r from-amber-700/20 to-amber-600/5 border-amber-600/40';
-    return 'bg-white/5 border-white/10';
+    if (rank === 1) return 'border-[var(--za-gold-2)] bg-gradient-to-r from-[rgba(233,203,139,0.12)] to-transparent';
+    if (rank === 2) return 'border-[var(--za-blue-4)] bg-gradient-to-r from-[rgba(143,182,220,0.08)] to-transparent';
+    if (rank === 3) return 'border-[var(--za-blue-2)] bg-gradient-to-r from-[rgba(61,123,198,0.06)] to-transparent';
+    return 'border-[var(--za-panel-border)] bg-[var(--za-panel)]';
   };
 
   const getRankIcon = (rank: number) => {
@@ -39,50 +39,67 @@ export default function Leaderboard({ openers, sortBy = 'points' }: { openers: O
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {sorted.map((opener, idx) => {
         const rank = idx + 1;
         return (
           <div
             key={opener.email}
-            className={`flex items-center gap-4 p-4 rounded-xl border ${getRankStyle(rank)} transition-all duration-500`}
+            className={`panel-glass flex items-center gap-4 p-5 rounded-2xl border ${getRankStyle(rank)} transition-all duration-500 animate-fade-up`}
+            style={{ animationDelay: `${idx * 60}ms` }}
           >
+            {/* Rank */}
             <div className="text-3xl font-bold w-16 text-center flex-shrink-0">
               {getRankIcon(rank)}
             </div>
-            <div className="text-4xl flex-shrink-0">{opener.avatarEmoji}</div>
+
+            {/* Avatar */}
+            <div className="text-5xl flex-shrink-0">{opener.avatarEmoji}</div>
+
+            {/* Name & Level */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xl font-bold text-white truncate">{opener.displayName || opener.name}</span>
-                <span className="text-sm px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: opener.levelColor + '30', color: opener.levelColor }}>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-bold truncate" style={{ color: 'var(--za-fg)' }}>
+                  {opener.displayName || opener.name}
+                </span>
+                <span
+                  className="text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wide"
+                  style={{ backgroundColor: opener.levelColor + '25', color: opener.levelColor, border: `1px solid ${opener.levelColor}40` }}
+                >
                   {opener.level}
                 </span>
                 {opener.streak > 0 && (
-                  <span className="text-sm">🔥 {opener.streak}</span>
+                  <span className="text-base font-semibold" style={{ color: 'var(--za-gold)' }}>
+                    🔥 {opener.streak}
+                  </span>
                 )}
               </div>
-              <div className="flex gap-1 mt-1">
-                {opener.badges.slice(0, 5).map((badge, i) => (
-                  <span key={i} className="text-xs">{badge}</span>
-                ))}
-              </div>
+              {opener.badges.length > 0 && (
+                <div className="flex gap-1 mt-1">
+                  {opener.badges.slice(0, 5).map((badge, i) => (
+                    <span key={i} className="text-sm">{badge}</span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex gap-6 text-center flex-shrink-0">
+
+            {/* Stats */}
+            <div className="flex gap-8 text-center flex-shrink-0">
               <div>
-                <div className="text-2xl font-bold text-blue-400">{opener.dials}</div>
-                <div className="text-xs text-gray-500 uppercase">Dials</div>
+                <div className="text-3xl font-black" style={{ color: 'var(--za-blue-3)' }}>{opener.dials}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>Dials</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-green-400">{opener.conversations}</div>
-                <div className="text-xs text-gray-500 uppercase">Gespräche</div>
+                <div className="text-3xl font-black" style={{ color: 'var(--za-green)' }}>{opener.conversations}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>Gespräche</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-purple-400">{opener.appointments}</div>
-                <div className="text-xs text-gray-500 uppercase">Termine</div>
+                <div className="text-3xl font-black" style={{ color: 'var(--za-blue-5)' }}>{opener.appointments}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>Termine</div>
               </div>
               <div>
-                <div className="text-3xl font-black text-yellow-400">{opener.points}</div>
-                <div className="text-xs text-gray-500 uppercase">Punkte</div>
+                <div className="text-4xl font-black" style={{ color: 'var(--za-gold)' }}>{opener.points}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>Punkte</div>
               </div>
             </div>
           </div>

@@ -6,7 +6,7 @@ import TeamGoalBar from '@/components/TeamGoalBar';
 import EventTicker from '@/components/EventTicker';
 import AppointmentOverlay from '@/components/AppointmentOverlay';
 import SoundManager from '@/components/SoundManager';
-import IncentiveBoard from '@/components/IncentiveBoard';
+import RaceView from '@/components/RaceView';
 
 interface DashboardData {
   openers: Array<{
@@ -37,16 +37,27 @@ interface DashboardData {
   timestamp: number;
 }
 
-type ViewMode = 'leaderboard' | 'incentives' | 'weekly';
+type ViewMode = 'leaderboard' | 'race-dials' | 'race-appointments' | 'race-points';
+
+const VIEW_LABELS: Record<ViewMode, string> = {
+  'leaderboard': '🏅 Leaderboard',
+  'race-dials': '📞 Dials-Rennen',
+  'race-appointments': '📅 Termine-Rennen',
+  'race-points': '⭐ Punkte-Rennen',
+};
+
+const VIEWS: ViewMode[] = ['leaderboard', 'race-dials', 'race-appointments', 'race-points'];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState('points');
   const [viewMode, setViewMode] = useState<ViewMode>('leaderboard');
-  const [autoRotate, setAutoRotate] = useState(false);
+  const [autoRotate, setAutoRotate] = useState(true);
   const [overlay, setOverlay] = useState<{ name: string; emoji: string } | null>(null);
   const [allEvents, setAllEvents] = useState<Array<{ type: string; message: string; timestamp: number; openerName: string }>>([]);
+  const [timeStr, setTimeStr] = useState('');
+  const [dateStr, setDateStr] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -56,7 +67,6 @@ export default function Dashboard() {
       setData(json);
       setError(null);
 
-      // Check for appointment events to show overlay
       if (json.events.length > 0) {
         const appointmentEvent = json.events.find(e => e.type === 'appointment');
         if (appointmentEvent) {
@@ -65,9 +75,8 @@ export default function Dashboard() {
         }
         setAllEvents(prev => [...json.events, ...prev].slice(0, 50));
       }
-    } catch (err) {
+    } catch {
       setError('Dashboard konnte nicht geladen werden');
-      console.error(err);
     }
   }, []);
 
@@ -77,118 +86,182 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Auto-rotation
+  // Clock
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      setTimeStr(now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }));
+      setDateStr(now.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Berlin' }));
+    };
+    update();
+    const i = setInterval(update, 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  // Auto-rotation between views
   useEffect(() => {
     if (!autoRotate) return;
-    const views: ViewMode[] = ['leaderboard', 'incentives', 'weekly'];
-    let idx = 0;
     const interval = setInterval(() => {
-      idx = (idx + 1) % views.length;
-      setViewMode(views[idx]);
-    }, 30000);
+      setViewMode(prev => {
+        const idx = VIEWS.indexOf(prev);
+        return VIEWS[(idx + 1) % VIEWS.length];
+      });
+    }, 15000);
     return () => clearInterval(interval);
   }, [autoRotate]);
 
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
-  const dateStr = now.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Berlin' });
+  // Panel hover glow
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const panel = (e.target as HTMLElement).closest('.panel-glass');
+      if (!panel) return;
+      const r = panel.getBoundingClientRect();
+      (panel as HTMLElement).style.setProperty('--mx', `${e.clientX - r.left}px`);
+      (panel as HTMLElement).style.setProperty('--my', `${e.clientY - r.top}px`);
+    };
+    document.addEventListener('mousemove', handler);
+    return () => document.removeEventListener('mousemove', handler);
+  }, []);
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl animate-pulse mb-4">📊</div>
-          <div className="text-2xl text-gray-400">Dashboard lädt...</div>
-          {error && <div className="text-red-400 mt-4">{error}</div>}
+      <div className="min-h-screen flex items-center justify-center relative">
+        <div className="aurora" aria-hidden="true"><div className="blob1" /><div className="blob2" /><div className="blob3" /></div>
+        <div className="text-center relative z-10">
+          <div className="text-7xl animate-pulse mb-6">📊</div>
+          <div className="text-2xl font-semibold" style={{ color: 'var(--za-fg-2)' }}>Dashboard lädt...</div>
+          {error && <div className="mt-4" style={{ color: 'var(--za-red)' }}>{error}</div>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Aurora */}
+      <div className="aurora" aria-hidden="true">
+        <div className="blob1" /><div className="blob2" /><div className="blob3" />
+      </div>
+
       {/* Header */}
-      <header className="bg-gray-900/80 backdrop-blur border-b border-gray-800 px-8 py-4">
+      <header className="relative z-10 px-8 py-4" style={{ background: 'rgba(11, 19, 34, 0.85)', borderBottom: '1px solid var(--za-panel-border)', backdropFilter: 'blur(12px)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tight">
-              🏆 SALES ARENA
+            <div className="flex items-center gap-2">
+              <span className="dot-live" />
+              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--za-fg-3)' }}>Live</span>
+            </div>
+            <h1 className="text-3xl font-black tracking-tight" style={{ color: 'var(--za-fg)' }}>
+              SALES ARENA
             </h1>
-            <p className="text-gray-400 text-sm">{dateStr}</p>
+            <p className="text-sm" style={{ color: 'var(--za-fg-3)' }}>{dateStr}</p>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Sort buttons */}
-            <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
-              {['points', 'dials', 'conversations', 'appointments'].map(key => (
+            {/* View buttons */}
+            <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--za-bg-2)', border: '1px solid var(--za-panel-border)' }}>
+              {VIEWS.map(view => (
                 <button
-                  key={key}
-                  onClick={() => setSortBy(key)}
-                  className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-                    sortBy === key ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
-                  }`}
+                  key={view}
+                  onClick={() => { setViewMode(view); setAutoRotate(false); }}
+                  className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                  style={{
+                    background: viewMode === view ? 'var(--za-blue-1)' : 'transparent',
+                    color: viewMode === view ? 'var(--za-fg)' : 'var(--za-fg-4)',
+                  }}
                 >
-                  {key === 'points' ? 'Punkte' : key === 'dials' ? 'Dials' : key === 'conversations' ? 'Gespräche' : 'Termine'}
+                  {VIEW_LABELS[view]}
                 </button>
               ))}
             </div>
 
-            {/* View toggle */}
-            <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
-              <button onClick={() => setViewMode('leaderboard')} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${viewMode === 'leaderboard' ? 'bg-purple-600 text-white' : 'text-gray-400'}`}>
-                🏅 Board
-              </button>
-              <button onClick={() => setViewMode('incentives')} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${viewMode === 'incentives' ? 'bg-purple-600 text-white' : 'text-gray-400'}`}>
-                🏆 Incentives
-              </button>
-            </div>
-
             <button
               onClick={() => setAutoRotate(!autoRotate)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${autoRotate ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+              style={{
+                background: autoRotate ? 'rgba(127, 194, 155, 0.15)' : 'var(--za-bg-2)',
+                color: autoRotate ? 'var(--za-green)' : 'var(--za-fg-4)',
+                border: `1px solid ${autoRotate ? 'rgba(127, 194, 155, 0.3)' : 'var(--za-panel-border)'}`,
+              }}
             >
               {autoRotate ? '🔄 Auto' : '⏸ Auto'}
             </button>
 
-            <div className="text-4xl font-black text-white">{timeStr}</div>
+            <div className="text-4xl font-black" style={{ color: 'var(--za-fg)', fontVariantNumeric: 'tabular-nums' }}>{timeStr}</div>
           </div>
         </div>
 
-        {/* Team Goal */}
+        {/* Team Goals */}
         <div className="mt-4 grid grid-cols-2 gap-4">
           <TeamGoalBar current={data.teamStats.totalAppointments} goal={data.teamStats.dailyGoal} label="📅 Tagesziel Termine" />
           <TeamGoalBar current={data.teamStats.weeklyAppointments} goal={data.teamStats.weeklyGoal} label="📊 Wochenziel Termine" />
         </div>
 
-        {/* Quick Stats */}
-        <div className="mt-4 flex gap-6">
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-6 py-3 text-center">
-            <div className="text-3xl font-black text-blue-400">{data.teamStats.totalDials}</div>
-            <div className="text-xs text-blue-300 uppercase font-semibold">Team Dials</div>
-          </div>
-          <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-6 py-3 text-center">
-            <div className="text-3xl font-black text-green-400">{data.teamStats.totalConversations}</div>
-            <div className="text-xs text-green-300 uppercase font-semibold">Gespräche</div>
-          </div>
-          <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl px-6 py-3 text-center">
-            <div className="text-3xl font-black text-purple-400">{data.teamStats.totalAppointments}</div>
-            <div className="text-xs text-purple-300 uppercase font-semibold">Termine</div>
-          </div>
-          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-6 py-3 text-center">
-            <div className="text-3xl font-black text-yellow-400">{data.teamStats.totalPoints}</div>
-            <div className="text-xs text-yellow-300 uppercase font-semibold">Team Punkte</div>
-          </div>
+        {/* KPI Tiles */}
+        <div className="mt-4 grid grid-cols-4 gap-4">
+          {[
+            { label: 'Team Dials', value: data.teamStats.totalDials, color: 'var(--za-blue-3)' },
+            { label: 'Gespräche', value: data.teamStats.totalConversations, color: 'var(--za-green)' },
+            { label: 'Termine', value: data.teamStats.totalAppointments, color: 'var(--za-blue-5)' },
+            { label: 'Team Punkte', value: data.teamStats.totalPoints, color: 'var(--za-gold)' },
+          ].map(kpi => (
+            <div
+              key={kpi.label}
+              className="panel-glass rounded-xl px-5 py-3 text-center"
+            >
+              <div className="text-3xl font-black" style={{ color: kpi.color }}>{kpi.value}</div>
+              <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>{kpi.label}</div>
+            </div>
+          ))}
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-auto">
-        {viewMode === 'leaderboard' && <Leaderboard openers={data.openers} sortBy={sortBy} />}
-        {viewMode === 'incentives' && <IncentiveBoard incentives={[]} />}
+      <main className="relative z-10 flex-1 p-8 overflow-auto">
+        {viewMode === 'leaderboard' && (
+          <div className="animate-fade-up">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold" style={{ color: 'var(--za-fg)' }}>Leaderboard</h2>
+              <div className="flex gap-1 rounded-lg p-1" style={{ background: 'var(--za-bg-2)', border: '1px solid var(--za-panel-border)' }}>
+                {['points', 'dials', 'conversations', 'appointments'].map(key => (
+                  <button
+                    key={key}
+                    onClick={() => setSortBy(key)}
+                    className="px-3 py-1 rounded-md text-sm font-semibold transition-all"
+                    style={{
+                      background: sortBy === key ? 'var(--za-blue-1)' : 'transparent',
+                      color: sortBy === key ? 'var(--za-fg)' : 'var(--za-fg-4)',
+                    }}
+                  >
+                    {key === 'points' ? 'Punkte' : key === 'dials' ? 'Dials' : key === 'conversations' ? 'Gespräche' : 'Termine'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Leaderboard openers={data.openers} sortBy={sortBy} />
+          </div>
+        )}
+        {viewMode === 'race-dials' && (
+          <div className="animate-fade-up h-full">
+            <RaceView openers={data.openers} metric="dials" />
+          </div>
+        )}
+        {viewMode === 'race-appointments' && (
+          <div className="animate-fade-up h-full">
+            <RaceView openers={data.openers} metric="appointments" />
+          </div>
+        )}
+        {viewMode === 'race-points' && (
+          <div className="animate-fade-up h-full">
+            <RaceView openers={data.openers} metric="points" />
+          </div>
+        )}
       </main>
 
       {/* Ticker */}
-      <EventTicker events={allEvents} />
+      <div className="relative z-10">
+        <EventTicker events={allEvents} />
+      </div>
 
       {/* Sound Manager */}
       <SoundManager events={allEvents} />
@@ -204,7 +277,7 @@ export default function Dashboard() {
 
       {/* Error indicator */}
       {error && (
-        <div className="fixed top-4 right-4 bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-2 rounded-lg text-sm">
+        <div className="fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm" style={{ background: 'rgba(232, 116, 103, 0.15)', border: '1px solid rgba(232, 116, 103, 0.3)', color: 'var(--za-red)' }}>
           ⚠️ {error}
         </div>
       )}

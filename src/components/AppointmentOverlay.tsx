@@ -15,16 +15,25 @@ export default function AppointmentOverlay({ openerName, emoji, onComplete }: Ap
   }, [onComplete]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(11, 19, 34, 0.92)', backdropFilter: 'blur(8px)' }}>
       <div className="text-center animate-bounce-in">
         <div className="text-9xl mb-6">{emoji}</div>
-        <div className="text-5xl font-black text-white mb-4">TERMIN GEBUCHT!</div>
-        <div className="text-4xl font-bold text-green-400">{openerName}</div>
-        <div className="mt-8 flex justify-center gap-2">
+        <div className="text-6xl font-black mb-4" style={{ color: 'var(--za-fg)', textShadow: '0 0 40px rgba(61, 123, 198, 0.5)' }}>
+          TERMIN GEBUCHT!
+        </div>
+        <div className="text-4xl font-bold" style={{ color: 'var(--za-green)' }}>{openerName}</div>
+        <div className="mt-8 flex justify-center gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="text-4xl animate-pulse" style={{ animationDelay: `${i * 0.1}s` }}>🎉</div>
+            <div key={i} className="text-5xl animate-pulse" style={{ animationDelay: `${i * 0.1}s` }}>🎉</div>
           ))}
         </div>
+        {/* Glow ring */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle at 50% 50%, rgba(61, 123, 198, 0.15) 0%, transparent 60%)',
+          }}
+        />
       </div>
     </div>
   );
