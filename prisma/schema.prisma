@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Opener {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  displayName   String
+  avatarEmoji   String   @default("👤")
+  level         String   @default("Bronze")
+  totalPoints   Int      @default(0)
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  isActive      Boolean  @default(true)
+  closeUserId1  String?
+  closeUserId2  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  dailyStats DailyStat[]
+  badges     Badge[]
+  incentiveProgress IncentiveProgress[]
+  challengeProgress ChallengeProgress[]
+  events     EventLog[]
+}
+
+model DailyStat {
+  id            String   @id @default(cuid())
+  openerId      String
+  date          DateTime
+  dials         Int      @default(0)
+  conversations Int      @default(0)
+  appointments  Int      @default(0)
+  points        Int      @default(0)
+  smsSent       Int      @default(0)
+  emailsSent    Int      @default(0)
+
+  opener Opener @relation(fields: [openerId], references: [id])
+
+  @@unique([openerId, date])
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  openerId    String
+  type        String
+  name        String
+  description String
+  earnedAt    DateTime @default(now())
+
+  opener Opener @relation(fields: [openerId], references: [id])
+}
+
+model Incentive {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  condition   String
+  emoji       String   @default("🏆")
+  imageUrl    String?
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  progress IncentiveProgress[]
+}
+
+model IncentiveProgress {
+  id           String    @id @default(cuid())
+  incentiveId  String
+  openerId     String
+  currentValue Int       @default(0)
+  targetValue  Int
+  isCompleted  Boolean   @default(false)
+  completedAt  DateTime?
+
+  incentive Incentive @relation(fields: [incentiveId], references: [id])
+  opener    Opener    @relation(fields: [openerId], references: [id])
+
+  @@unique([incentiveId, openerId])
+}
+
+model Challenge {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  targetType  String
+  targetValue Int
+  reward      String
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  progress ChallengeProgress[]
+}
+
+model ChallengeProgress {
+  id           String    @id @default(cuid())
+  challengeId  String
+  openerId     String
+  currentValue Int       @default(0)
+  isCompleted  Boolean   @default(false)
+  completedAt  DateTime?
+
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  opener    Opener    @relation(fields: [openerId], references: [id])
+
+  @@unique([challengeId, openerId])
+}
+
+model EventLog {
+  id        String   @id @default(cuid())
+  type      String
+  openerId  String?
+  message   String
+  data      String?
+  createdAt DateTime @default(now())
+
+  opener Opener? @relation(fields: [openerId], references: [id])
+}
