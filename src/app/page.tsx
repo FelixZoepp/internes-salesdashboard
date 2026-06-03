@@ -7,6 +7,7 @@ import EventTicker from '@/components/EventTicker';
 import AppointmentOverlay from '@/components/AppointmentOverlay';
 import SoundManager from '@/components/SoundManager';
 import RaceView from '@/components/RaceView';
+import TeamBattle from '@/components/TeamBattle';
 
 interface DashboardData {
   openers: Array<{
@@ -23,6 +24,7 @@ interface DashboardData {
     streak: number;
     badges: string[];
     avatarEmoji: string;
+    team: string;
   }>;
   teamStats: {
     totalDials: number;
@@ -32,21 +34,25 @@ interface DashboardData {
     dailyGoal: number;
     weeklyGoal: number;
     weeklyAppointments: number;
+    teams?: {
+      felix: { name: string; dials: number; appointments: number; points: number };
+      hendrik: { name: string; dials: number; appointments: number; points: number };
+    };
   };
   events: Array<{ type: string; message: string; timestamp: number; openerName: string }>;
   timestamp: number;
 }
 
-type ViewMode = 'leaderboard' | 'race-dials' | 'race-appointments' | 'race-points';
+type ViewMode = 'leaderboard' | 'team-battle' | 'race-dials' | 'race-appointments';
 
 const VIEW_LABELS: Record<ViewMode, string> = {
-  'leaderboard': '🏅 Leaderboard',
-  'race-dials': '📞 Dials-Rennen',
-  'race-appointments': '📅 Termine-Rennen',
-  'race-points': '⭐ Punkte-Rennen',
+  'leaderboard': '🏅 Ranking',
+  'team-battle': '⚔️ Team Battle',
+  'race-dials': '📞 Protokoll-Rennen',
+  'race-appointments': '📅 Setting-Rennen',
 };
 
-const VIEWS: ViewMode[] = ['leaderboard', 'race-dials', 'race-appointments', 'race-points'];
+const VIEWS: ViewMode[] = ['leaderboard', 'team-battle', 'race-dials', 'race-appointments'];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -251,9 +257,9 @@ export default function Dashboard() {
             <RaceView openers={data.openers} metric="appointments" />
           </div>
         )}
-        {viewMode === 'race-points' && (
+        {viewMode === 'team-battle' && data.teamStats.teams && (
           <div className="animate-fade-up h-full">
-            <RaceView openers={data.openers} metric="points" />
+            <TeamBattle teams={data.teamStats.teams} openers={data.openers} />
           </div>
         )}
       </main>

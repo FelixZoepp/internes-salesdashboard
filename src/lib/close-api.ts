@@ -1,4 +1,4 @@
-import { TIMEZONE, CLOSE_APPOINTMENT_ACTIVITY, CLOSE_DIAL_ACTIVITY } from './config';
+import { TIMEZONE } from './config';
 
 interface CloseUser {
   id: string;
@@ -13,14 +13,12 @@ interface CloseCustomActivity {
   user_id: string;
   created_by: string;
   date_created: string;
-  status?: string;
-  [key: string]: unknown;
+  user_name?: string;
 }
 
 interface CloseCustomActivityType {
   id: string;
   name: string;
-  organization_id: string;
 }
 
 export interface OpenerData {
@@ -35,16 +33,36 @@ export interface OpenerData {
   emailsSent: number;
 }
 
+// Hardcoded team mapping — wer sind die Caller die gegeneinander battlen
+export interface TeamMember {
+  email: string;
+  closeUserId: string;
+  name: string;
+  team: 'felix' | 'hendrik';
+  emoji: string;
+}
+
+export const TEAM_MEMBERS: TeamMember[] = [
+  // Team Felix (Account 1: Content-Leads)
+  { email: 'taha@content-leads.de', closeUserId: 'user_cQBA4gKgHPEiHAtaEtHHdPx1jt73LwL0N9BCvHUG4Nu', name: 'Taha', team: 'felix', emoji: '⚡' },
+  { email: 'johannes@content-leads.de', closeUserId: 'user_mKNHQXqBAlqlizVUnEln7ng516kATkBys7WU96zg0E6', name: 'Johannes', team: 'felix', emoji: '🔥' },
+  { email: 'felix@content-leads.de', closeUserId: 'user_RZ3tYRZawQGacSrskWunisLNG4cAU8Dh5yqNUXOszBb', name: 'Felix', team: 'felix', emoji: '👑' },
+  // Team Hendrik (Account 2: Hoffmann)
+  { email: 'o1@hoffmann-wd.de', closeUserId: 'user_jg9rTIVCxTBXUIsbatPhujMADNLR5cj7bHZGNlhg9mC', name: 'Opener 1', team: 'hendrik', emoji: '💎' },
+  { email: 'o2@hoffmann-wd.de', closeUserId: 'user_8aTaFHt8ibP9z2u36XGGebbMVGJpqKcaUgpV78UMAwl', name: 'Opener 2', team: 'hendrik', emoji: '🚀' },
+  { email: 'o3@hoffmann-wd.de', closeUserId: 'user_s3SCQuYijLchWgQBhJSsKH58DfsMcABDptmhto3UAXz', name: 'Opener 3', team: 'hendrik', emoji: '🎯' },
+  { email: 'hendrik@hoffmann-wd.de', closeUserId: 'user_AKQijtNFeJVgnXsqb2Lfpc9VzIpV775r6qDSnLuZYzp', name: 'Hendrik', team: 'hendrik', emoji: '🦁' },
+];
+
 function getTodayRange(): { start: string; end: string } {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE });
   const todayStr = formatter.format(now);
-  // Determine UTC offset for Berlin (CET +01:00 or CEST +02:00)
   const berlinOffset = new Intl.DateTimeFormat('en', {
     timeZone: TIMEZONE,
     timeZoneName: 'shortOffset',
   }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value || '+02:00';
-  const offset = berlinOffset.replace('GMT', '').replace('+', '+') || '+02:00';
+  const offset = berlinOffset.replace('GMT', '') || '+02:00';
   return {
     start: `${todayStr}T00:00:00${offset}`,
     end: `${todayStr}T23:59:59${offset}`,
@@ -55,14 +73,13 @@ class CloseClient {
   private apiKey: string;
   private baseUrl = 'https://api.close.com/api/v1';
   private label: string;
-  private activityTypeCache: Map<string, string> | null = null;
 
   constructor(apiKey: string, label: string) {
     this.apiKey = apiKey;
     this.label = label;
   }
 
-  private async fetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+  private async apiFetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     if (params) {
       Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -79,7 +96,7 @@ class CloseClient {
       const retryAfter = parseInt(res.headers.get('retry-after') || '5', 10);
       console.warn(`Close API rate limited (${this.label}), retrying in ${retryAfter}s`);
       await new Promise(r => setTimeout(r, retryAfter * 1000));
-      return this.fetch<T>(endpoint, params);
+      return this.apiFetch<T>(endpoint, params);
     }
 
     if (!res.ok) {
@@ -91,31 +108,31 @@ class CloseClient {
   }
 
   async getUsers(): Promise<CloseUser[]> {
-    const data = await this.fetch<{ data: CloseUser[] }>('/user/');
+    const data = await this.apiFetch<{ data: CloseUser[] }>('/user/');
     return data.data;
   }
 
   /**
-   * Get all Custom Activity Types to map name -> id
-   * e.g. "Setting vereinbart" -> "actitype_xxx"
+   * Get Custom Activity Type name->id mapping
+   * Endpoint: /custom_activity/ (not /custom_activity/type/)
    */
   async getCustomActivityTypes(): Promise<Map<string, string>> {
-    if (this.activityTypeCache) return this.activityTypeCache;
-
-    const data = await this.fetch<{ data: CloseCustomActivityType[] }>('/custom_activity/type/');
+    const data = await this.apiFetch<{ data: CloseCustomActivityType[] }>('/custom_activity/');
     const map = new Map<string, string>();
     for (const t of data.data) {
-      map.set(t.name.toLowerCase(), t.id);
+      map.set(t.id, t.name);
+      console.log(`[${this.label}] Activity Type: ${t.id} = "${t.name}"`);
     }
-    this.activityTypeCache = map;
-    console.log(`[${this.label}] Custom Activity Types:`, Object.fromEntries(map));
     return map;
   }
 
   /**
-   * Fetch custom activities of a specific type for today
+   * Fetch all custom activities for today
+   * The activity type name tells us what it is:
+   * - "1 - Gesprächsprotokoll (Cold Call)" = Anwahl/Dial
+   * - "2 - Gesprächsprotokoll (Setting)" = Termin/Setting vereinbart
    */
-  async getTodayCustomActivities(typeId: string): Promise<CloseCustomActivity[]> {
+  async getTodayCustomActivities(): Promise<CloseCustomActivity[]> {
     const { start, end } = getTodayRange();
     const allActivities: CloseCustomActivity[] = [];
     let hasMore = true;
@@ -123,8 +140,8 @@ class CloseClient {
     const limit = 100;
 
     while (hasMore) {
-      const data = await this.fetch<{ data: CloseCustomActivity[]; has_more: boolean }>(
-        `/activity/custom/${typeId}/`,
+      const data = await this.apiFetch<{ data: CloseCustomActivity[]; has_more: boolean }>(
+        '/activity/custom/',
         {
           date_created__gte: start,
           date_created__lte: end,
@@ -140,38 +157,30 @@ class CloseClient {
   }
 
   async getOpenerData(): Promise<OpenerData[]> {
-    // 1. Get users and activity type mapping
-    const [users, activityTypes] = await Promise.all([
+    const [users, activityTypes, todayActivities] = await Promise.all([
       this.getUsers(),
       this.getCustomActivityTypes(),
+      this.getTodayCustomActivities(),
     ]);
 
-    // 2. Find the type IDs for our configured activity names
-    const appointmentTypeId = activityTypes.get(CLOSE_APPOINTMENT_ACTIVITY.toLowerCase());
-    const dialTypeId = activityTypes.get(CLOSE_DIAL_ACTIVITY.toLowerCase());
-
-    console.log(`[${this.label}] Looking for appointment activity: "${CLOSE_APPOINTMENT_ACTIVITY}" -> ${appointmentTypeId || 'NOT FOUND'}`);
-    console.log(`[${this.label}] Looking for dial activity: "${CLOSE_DIAL_ACTIVITY}" -> ${dialTypeId || 'NOT FOUND'}`);
-
-    if (!appointmentTypeId && !dialTypeId) {
-      console.warn(`[${this.label}] No matching custom activity types found! Available types: ${Array.from(activityTypes.keys()).join(', ')}`);
+    // Build type id -> category mapping
+    const typeCategory = new Map<string, 'dial' | 'setting'>();
+    for (const [id, name] of activityTypes) {
+      const lower = name.toLowerCase();
+      if (lower.includes('cold call') || lower.includes('protokoll')) {
+        typeCategory.set(id, 'dial');
+      } else if (lower.includes('setting')) {
+        typeCategory.set(id, 'setting');
+      }
     }
 
-    // 3. Fetch today's activities for both types in parallel
-    const [appointmentActivities, dialActivities] = await Promise.all([
-      appointmentTypeId ? this.getTodayCustomActivities(appointmentTypeId) : Promise.resolve([]),
-      dialTypeId ? this.getTodayCustomActivities(dialTypeId) : Promise.resolve([]),
-    ]);
-
-    console.log(`[${this.label}] Today: ${dialActivities.length} Protokolle, ${appointmentActivities.length} Settings vereinbart`);
-
-    // 4. Build opener map
+    // Build opener map
     const openerMap = new Map<string, OpenerData>();
     for (const user of users) {
       openerMap.set(user.id, {
         closeUserId: user.id,
         email: user.email,
-        name: `${user.first_name} ${user.last_name}`.trim(),
+        name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email,
         dials: 0,
         conversations: 0,
         appointments: 0,
@@ -181,21 +190,24 @@ class CloseClient {
       });
     }
 
-    // 5. Count Protokolle (= Dials/Anwahlen)
-    for (const activity of dialActivities) {
+    // Count activities per user
+    for (const activity of todayActivities) {
       const userId = activity.user_id || activity.created_by;
       const opener = openerMap.get(userId);
-      if (opener) {
+      if (!opener) continue;
+
+      const category = typeCategory.get(activity.custom_activity_type_id);
+      if (category === 'dial') {
         opener.dials++;
+      } else if (category === 'setting') {
+        opener.appointments++;
       }
     }
 
-    // 6. Count Settings vereinbart (= Termine/Appointments)
-    for (const activity of appointmentActivities) {
-      const userId = activity.user_id || activity.created_by;
-      const opener = openerMap.get(userId);
-      if (opener) {
-        opener.appointments++;
+    console.log(`[${this.label}] Today: ${todayActivities.length} total custom activities`);
+    for (const opener of openerMap.values()) {
+      if (opener.dials > 0 || opener.appointments > 0) {
+        console.log(`  ${opener.name}: ${opener.dials} dials, ${opener.appointments} settings`);
       }
     }
 
@@ -220,27 +232,31 @@ export async function fetchAllOpenerData(): Promise<OpenerData[]> {
   }
 
   if (clients.length === 0) {
-    throw new Error('Keine Close API Keys konfiguriert. Setze CLOSE_API_KEY_1 und/oder CLOSE_API_KEY_2 in den Umgebungsvariablen.');
+    throw new Error('Keine Close API Keys konfiguriert');
   }
 
   const results = await Promise.allSettled(clients.map(c => c.getOpenerData()));
 
-  // Merge results, handle partial failures
   const merged = new Map<string, OpenerData>();
   for (const result of results) {
     if (result.status === 'rejected') {
-      console.error('Close API fetch failed for one account:', result.reason);
+      console.error('Close API fetch failed:', result.reason);
       continue;
     }
     for (const opener of result.value) {
-      const existing = merged.get(opener.email);
+      // Use team member mapping for name/email if available
+      const teamMember = TEAM_MEMBERS.find(m => m.closeUserId === opener.closeUserId);
+      const key = teamMember?.email || opener.email;
+      const existing = merged.get(key);
       if (existing) {
         existing.dials += opener.dials;
-        existing.conversations += opener.conversations;
         existing.appointments += opener.appointments;
-        existing.totalCallDuration += opener.totalCallDuration;
       } else {
-        merged.set(opener.email, { ...opener });
+        merged.set(key, {
+          ...opener,
+          name: teamMember?.name || opener.name,
+          email: key,
+        });
       }
     }
   }

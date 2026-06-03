@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchAllOpenerData, OpenerData } from '@/lib/close-api';
+import { fetchAllOpenerData, OpenerData, TEAM_MEMBERS } from '@/lib/close-api';
 import { getMockData, calculatePoints, MOCK_AVATARS } from '@/lib/mock-data';
 import { MOCK_DATA, LEVELS, TEAM_DAILY_GOAL, TEAM_WEEKLY_GOAL } from '@/lib/config';
 
@@ -23,10 +23,10 @@ export async function GET() {
       rawData = await fetchAllOpenerData();
     }
 
-    // Enrich with points and sort
     const enriched = rawData.map(o => {
       const points = calculatePoints(o);
       const level = getLevel(points);
+      const teamMember = TEAM_MEMBERS.find(m => m.email === o.email || m.closeUserId === o.closeUserId);
       return {
         ...o,
         points,
@@ -35,8 +35,9 @@ export async function GET() {
         levelColor: level.color,
         streak: 0,
         badges: [] as string[],
-        avatarEmoji: MOCK_DATA ? (MOCK_AVATARS[o.email] || '👤') : '👤',
-        displayName: o.name,
+        avatarEmoji: MOCK_DATA ? (MOCK_AVATARS[o.email] || '👤') : (teamMember?.emoji || '👤'),
+        displayName: teamMember?.name || o.name,
+        team: teamMember?.team || 'unknown',
       };
     });
 
@@ -44,7 +45,7 @@ export async function GET() {
     enriched.sort((a, b) => b.points - a.points);
     enriched.forEach((o, i) => { o.rank = i + 1; });
 
-    // Detect events (diffs from previous poll)
+    // Detect events
     const events: Array<{ type: string; message: string; timestamp: number; openerName: string }> = [];
     const now = Date.now();
 
@@ -52,13 +53,13 @@ export async function GET() {
       const prev = previousState.get(opener.email);
       if (prev) {
         if (opener.appointments > prev.appointments) {
-          events.push({ type: 'appointment', message: `🔥 ${opener.displayName} hat gerade einen Termin gebucht!`, timestamp: now, openerName: opener.displayName });
+          events.push({ type: 'appointment', message: `🔥 ${opener.displayName} hat gerade ein Setting vereinbart!`, timestamp: now, openerName: opener.displayName });
         }
         if (opener.dials >= 50 && prev.dials < 50) {
-          events.push({ type: 'milestone', message: `💪 ${opener.displayName}: 50 Dials erreicht!`, timestamp: now, openerName: opener.displayName });
+          events.push({ type: 'milestone', message: `💪 ${opener.displayName}: 50 Protokolle erreicht!`, timestamp: now, openerName: opener.displayName });
         }
         if (opener.dials >= 100 && prev.dials < 100) {
-          events.push({ type: 'milestone', message: `💯 ${opener.displayName}: 100 Dials — Century Club!`, timestamp: now, openerName: opener.displayName });
+          events.push({ type: 'milestone', message: `💯 ${opener.displayName}: 100 Protokolle — Century Club!`, timestamp: now, openerName: opener.displayName });
         }
         if (opener.rank === 1 && prev.rank !== 1) {
           events.push({ type: 'leader_change', message: `👑 Führungswechsel! ${opener.displayName} ist jetzt #1!`, timestamp: now, openerName: opener.displayName });
@@ -71,6 +72,10 @@ export async function GET() {
 
     previousState = new Map(enriched.map(o => [o.email, { dials: o.dials, conversations: o.conversations, appointments: o.appointments, points: o.points, rank: o.rank }]));
 
+    // Team stats
+    const teamFelix = enriched.filter(o => o.team === 'felix');
+    const teamHendrik = enriched.filter(o => o.team === 'hendrik');
+
     const teamStats = {
       totalDials: enriched.reduce((s, o) => s + o.dials, 0),
       totalConversations: enriched.reduce((s, o) => s + o.conversations, 0),
@@ -79,6 +84,20 @@ export async function GET() {
       dailyGoal: TEAM_DAILY_GOAL,
       weeklyGoal: TEAM_WEEKLY_GOAL,
       weeklyAppointments: enriched.reduce((s, o) => s + o.appointments, 0),
+      teams: {
+        felix: {
+          name: 'Team Felix',
+          dials: teamFelix.reduce((s, o) => s + o.dials, 0),
+          appointments: teamFelix.reduce((s, o) => s + o.appointments, 0),
+          points: teamFelix.reduce((s, o) => s + o.points, 0),
+        },
+        hendrik: {
+          name: 'Team Hendrik',
+          dials: teamHendrik.reduce((s, o) => s + o.dials, 0),
+          appointments: teamHendrik.reduce((s, o) => s + o.appointments, 0),
+          points: teamHendrik.reduce((s, o) => s + o.points, 0),
+        },
+      },
     };
 
     return NextResponse.json({ openers: enriched, teamStats, events, timestamp: now });
