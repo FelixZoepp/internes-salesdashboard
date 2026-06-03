@@ -23,7 +23,6 @@ function initMockState(): OpenerData[] {
     totalCallDuration: Math.floor(Math.random() * 3600) + 600,
     smsSent: Math.floor(Math.random() * 10),
     emailsSent: Math.floor(Math.random() * 8),
-    calls: [],
   }));
 }
 

@@ -27,3 +27,9 @@ export const TEAM_DAILY_GOAL = parseInt(process.env.TEAM_DAILY_GOAL || '10', 10)
 export const TIMEZONE = 'Europe/Berlin';
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 export const MOCK_DATA = process.env.MOCK_DATA === 'true';
+
+// Custom Activity Names in Close CRM
+// "Setting vereinbart" = Termin gebucht (zählt als Appointment)
+// "Protokoll" = Anwahl/Dial (Custom Activity die nach einem Call abgeschickt wird)
+export const CLOSE_APPOINTMENT_ACTIVITY = process.env.CLOSE_APPOINTMENT_ACTIVITY || 'Setting vereinbart';
+export const CLOSE_DIAL_ACTIVITY = process.env.CLOSE_DIAL_ACTIVITY || 'Protokoll';

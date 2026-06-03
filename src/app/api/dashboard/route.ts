@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { fetchAllOpenerData, OpenerData } from '@/lib/close-api';
 import { getMockData, calculatePoints, MOCK_AVATARS } from '@/lib/mock-data';
 import { MOCK_DATA, LEVELS, TEAM_DAILY_GOAL, TEAM_WEEKLY_GOAL } from '@/lib/config';
-import prisma from '@/lib/prisma';
 
 function getLevel(points: number) {
   let level: { name: string; minPoints: number; color: string } = LEVELS[0];
@@ -24,36 +23,28 @@ export async function GET() {
       rawData = await fetchAllOpenerData();
     }
 
-    // Get opener records from DB for streaks, badges
-    let dbMap = new Map<string, { currentStreak: number; avatarEmoji: string; displayName: string; badges: { type: string }[] }>();
-    try {
-      const dbOpeners = await prisma.opener.findMany({ where: { isActive: true }, include: { badges: true } });
-      dbMap = new Map(dbOpeners.map(o => [o.email, o]));
-    } catch {
-      // DB might not be ready yet, continue with empty map
-    }
-
+    // Enrich with points and sort
     const enriched = rawData.map(o => {
       const points = calculatePoints(o);
       const level = getLevel(points);
-      const dbOpener = dbMap.get(o.email);
       return {
         ...o,
         points,
         rank: 0,
         level: level.name,
         levelColor: level.color,
-        streak: dbOpener?.currentStreak ?? 0,
-        badges: dbOpener?.badges.map(b => b.type) ?? [],
-        avatarEmoji: MOCK_DATA ? (MOCK_AVATARS[o.email] || '👤') : (dbOpener?.avatarEmoji || '👤'),
-        displayName: dbOpener?.displayName || o.name,
+        streak: 0,
+        badges: [] as string[],
+        avatarEmoji: MOCK_DATA ? (MOCK_AVATARS[o.email] || '👤') : '👤',
+        displayName: o.name,
       };
     });
 
+    // Sort by points descending
     enriched.sort((a, b) => b.points - a.points);
     enriched.forEach((o, i) => { o.rank = i + 1; });
 
-    // Detect events
+    // Detect events (diffs from previous poll)
     const events: Array<{ type: string; message: string; timestamp: number; openerName: string }> = [];
     const now = Date.now();
 
@@ -93,6 +84,9 @@ export async function GET() {
     return NextResponse.json({ openers: enriched, teamStats, events, timestamp: now });
   } catch (error) {
     console.error('Dashboard API error:', error);
-    return NextResponse.json({ error: 'Failed to fetch dashboard data', details: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Dashboard-Daten konnten nicht geladen werden', details: String(error) },
+      { status: 500 }
+    );
   }
 }
