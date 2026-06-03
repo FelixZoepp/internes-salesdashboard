@@ -1,14 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Leaderboard from '@/components/Leaderboard';
 import TeamGoalBar from '@/components/TeamGoalBar';
 import EventTicker from '@/components/EventTicker';
 import AppointmentOverlay from '@/components/AppointmentOverlay';
 import SoundManager from '@/components/SoundManager';
 import RaceView from '@/components/RaceView';
-import TeamBattle from '@/components/TeamBattle';
-import TrophyBoard from '@/components/TrophyBoard';
 
 interface DashboardData {
   openers: Array<{
@@ -36,33 +33,18 @@ interface DashboardData {
     dailyGoal: number;
     weeklyGoal: number;
     weeklyAppointments: number;
-    teams?: {
-      felix: { name: string; dials: number; appointments: number; points: number };
-      hendrik: { name: string; dials: number; appointments: number; points: number };
-    };
   };
   events: Array<{ type: string; message: string; timestamp: number; openerName: string }>;
   timestamp: number;
 }
 
-type ViewMode = 'leaderboard' | 'team-battle' | 'race-dials' | 'race-appointments' | 'trophies';
-
-const VIEW_LABELS: Record<ViewMode, string> = {
-  'leaderboard': '🏅 Ranking',
-  'team-battle': '⚔️ Battle',
-  'race-dials': '📞 Protokolle',
-  'race-appointments': '📅 Settings',
-  'trophies': '🏆 Bonus',
-};
-
-const VIEWS: ViewMode[] = ['leaderboard', 'team-battle', 'race-dials', 'race-appointments', 'trophies'];
+type ViewMode = 'race-dials' | 'race-appointments';
+const VIEWS: ViewMode[] = ['race-dials', 'race-appointments'];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState('points');
-  const [viewMode, setViewMode] = useState<ViewMode>('leaderboard');
-  const [autoRotate, setAutoRotate] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('race-dials');
   const [overlay, setOverlay] = useState<{ name: string; emoji: string } | null>(null);
   const [allEvents, setAllEvents] = useState<Array<{ type: string; message: string; timestamp: number; openerName: string }>>([]);
   const [timeStr, setTimeStr] = useState('');
@@ -107,17 +89,13 @@ export default function Dashboard() {
     return () => clearInterval(i);
   }, []);
 
-  // Auto-rotation between views
+  // Auto-rotate between Dials and Settings
   useEffect(() => {
-    if (!autoRotate) return;
     const interval = setInterval(() => {
-      setViewMode(prev => {
-        const idx = VIEWS.indexOf(prev);
-        return VIEWS[(idx + 1) % VIEWS.length];
-      });
+      setViewMode(prev => prev === 'race-dials' ? 'race-appointments' : 'race-dials');
     }, 15000);
     return () => clearInterval(interval);
-  }, [autoRotate]);
+  }, []);
 
   // Panel hover glow
   useEffect(() => {
@@ -145,6 +123,13 @@ export default function Dashboard() {
     );
   }
 
+  const totalBonusToday = data.openers.reduce((sum, o) => {
+    return sum + o.earnedIncentives.reduce((s, inc) => {
+      const match = inc.bonus.match(/(\d+)/);
+      return s + (match ? parseInt(match[1]) : 0);
+    }, 0);
+  }, 0);
+
   return (
     <div className="min-h-screen flex flex-col relative">
       {/* Aurora */}
@@ -167,122 +152,53 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* View buttons */}
+            {/* View toggle */}
             <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--za-bg-2)', border: '1px solid var(--za-panel-border)' }}>
               {VIEWS.map(view => (
                 <button
                   key={view}
-                  onClick={() => { setViewMode(view); setAutoRotate(false); }}
-                  className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                  onClick={() => setViewMode(view)}
+                  className="px-4 py-2 rounded-lg text-base font-bold transition-all"
                   style={{
                     background: viewMode === view ? 'var(--za-blue-1)' : 'transparent',
                     color: viewMode === view ? 'var(--za-fg)' : 'var(--za-fg-4)',
                   }}
                 >
-                  {VIEW_LABELS[view]}
+                  {view === 'race-dials' ? '📞 Protokolle' : '📅 Settings'}
                 </button>
               ))}
             </div>
-
-            <button
-              onClick={() => setAutoRotate(!autoRotate)}
-              className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                background: autoRotate ? 'rgba(127, 194, 155, 0.15)' : 'var(--za-bg-2)',
-                color: autoRotate ? 'var(--za-green)' : 'var(--za-fg-4)',
-                border: `1px solid ${autoRotate ? 'rgba(127, 194, 155, 0.3)' : 'var(--za-panel-border)'}`,
-              }}
-            >
-              {autoRotate ? '🔄 Auto' : '⏸ Auto'}
-            </button>
 
             <div className="text-4xl font-black" style={{ color: 'var(--za-fg)', fontVariantNumeric: 'tabular-nums' }}>{timeStr}</div>
           </div>
         </div>
 
-        {/* Team Goals */}
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          <TeamGoalBar current={data.teamStats.totalAppointments} goal={data.teamStats.dailyGoal} label="📅 Tagesziel Termine" />
-          <TeamGoalBar current={data.teamStats.weeklyAppointments} goal={data.teamStats.weeklyGoal} label="📊 Wochenziel Termine" />
-        </div>
-
-        {/* KPI Tiles */}
-        {(() => {
-          const totalBonusToday = data.openers.reduce((sum, o) => {
-            return sum + o.earnedIncentives.reduce((s, inc) => {
-              const match = inc.bonus.match(/(\d+)/);
-              return s + (match ? parseInt(match[1]) : 0);
-            }, 0);
-          }, 0);
-          return (
-            <div className="mt-4 grid grid-cols-5 gap-4">
-              {[
-                { label: 'Protokolle', value: data.teamStats.totalDials, color: 'var(--za-blue-3)' },
-                { label: 'Settings', value: data.teamStats.totalAppointments, color: 'var(--za-blue-5)' },
-                { label: 'Team Punkte', value: data.teamStats.totalPoints, color: 'var(--za-gold)' },
-                { label: 'Trophäen', value: data.openers.reduce((s, o) => s + o.earnedIncentives.length, 0), color: 'var(--za-gold-2)' },
-                { label: 'Bonus heute', value: totalBonusToday, color: 'var(--za-green)', prefix: '€' },
-              ].map(kpi => (
-                <div
-                  key={kpi.label}
-                  className="panel-glass rounded-xl px-5 py-3 text-center"
-                >
-                  <div className="text-3xl font-black" style={{ color: kpi.color }}>
-                    {'prefix' in kpi ? `${kpi.prefix}${kpi.value}` : kpi.value}
-                  </div>
-                  <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>{kpi.label}</div>
-                </div>
-              ))}
+        {/* KPI + Goals row */}
+        <div className="mt-4 grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 items-end">
+          <TeamGoalBar current={data.teamStats.totalAppointments} goal={data.teamStats.dailyGoal} label="📅 Tagesziel Settings" />
+          <TeamGoalBar current={data.teamStats.weeklyAppointments} goal={data.teamStats.weeklyGoal} label="📊 Wochenziel Settings" />
+          <div className="panel-glass rounded-xl px-6 py-3 text-center">
+            <div className="text-3xl font-black" style={{ color: 'var(--za-blue-3)' }}>{data.teamStats.totalDials}</div>
+            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>Protokolle</div>
+          </div>
+          <div className="panel-glass rounded-xl px-6 py-3 text-center">
+            <div className="text-3xl font-black" style={{ color: 'var(--za-blue-5)' }}>{data.teamStats.totalAppointments}</div>
+            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>Settings</div>
+          </div>
+          {totalBonusToday > 0 && (
+            <div className="panel-glass rounded-xl px-6 py-3 text-center">
+              <div className="text-3xl font-black" style={{ color: 'var(--za-green)' }}>€{totalBonusToday}</div>
+              <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--za-fg-4)' }}>Bonus</div>
             </div>
-          );
-        })()}
+          )}
+        </div>
       </header>
 
-      {/* Main Content */}
-      <main className="relative z-10 flex-1 p-8 overflow-auto">
-        {viewMode === 'leaderboard' && (
-          <div className="animate-fade-up">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold" style={{ color: 'var(--za-fg)' }}>Leaderboard</h2>
-              <div className="flex gap-1 rounded-lg p-1" style={{ background: 'var(--za-bg-2)', border: '1px solid var(--za-panel-border)' }}>
-                {['points', 'dials', 'conversations', 'appointments'].map(key => (
-                  <button
-                    key={key}
-                    onClick={() => setSortBy(key)}
-                    className="px-3 py-1 rounded-md text-sm font-semibold transition-all"
-                    style={{
-                      background: sortBy === key ? 'var(--za-blue-1)' : 'transparent',
-                      color: sortBy === key ? 'var(--za-fg)' : 'var(--za-fg-4)',
-                    }}
-                  >
-                    {key === 'points' ? 'Punkte' : key === 'dials' ? 'Dials' : key === 'conversations' ? 'Gespräche' : 'Termine'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <Leaderboard openers={data.openers} sortBy={sortBy} />
-          </div>
-        )}
-        {viewMode === 'race-dials' && (
-          <div className="animate-fade-up h-full">
-            <RaceView openers={data.openers} metric="dials" />
-          </div>
-        )}
-        {viewMode === 'race-appointments' && (
-          <div className="animate-fade-up h-full">
-            <RaceView openers={data.openers} metric="appointments" />
-          </div>
-        )}
-        {viewMode === 'team-battle' && data.teamStats.teams && (
-          <div className="animate-fade-up h-full">
-            <TeamBattle teams={data.teamStats.teams} openers={data.openers} />
-          </div>
-        )}
-        {viewMode === 'trophies' && (
-          <div className="animate-fade-up h-full">
-            <TrophyBoard openers={data.openers} />
-          </div>
-        )}
+      {/* Main Content — Race Views */}
+      <main className="relative z-10 flex-1 p-8">
+        <div className="animate-fade-up h-full" key={viewMode}>
+          <RaceView openers={data.openers} metric={viewMode === 'race-dials' ? 'dials' : 'appointments'} />
+        </div>
       </main>
 
       {/* Ticker */}
@@ -305,7 +221,7 @@ export default function Dashboard() {
       {/* Error indicator */}
       {error && (
         <div className="fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm" style={{ background: 'rgba(232, 116, 103, 0.15)', border: '1px solid rgba(232, 116, 103, 0.3)', color: 'var(--za-red)' }}>
-          ⚠️ {error}
+          {error}
         </div>
       )}
     </div>

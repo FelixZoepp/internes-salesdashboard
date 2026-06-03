@@ -43,17 +43,18 @@ export interface TeamMember {
   emoji: string;
 }
 
+// Die 4 Battle-Caller — Karib und Renee werden morgen zugeordnet
 export const TEAM_MEMBERS: TeamMember[] = [
-  // Team Felix (Account 1: Content-Leads)
-  { email: 'taha@content-leads.de', closeUserId: 'user_cQBA4gKgHPEiHAtaEtHHdPx1jt73LwL0N9BCvHUG4Nu', name: 'Taha', team: 'felix', emoji: '⚡' },
+  // Team Felix
   { email: 'johannes@content-leads.de', closeUserId: 'user_mKNHQXqBAlqlizVUnEln7ng516kATkBys7WU96zg0E6', name: 'Johannes', team: 'felix', emoji: '🔥' },
-  { email: 'felix@content-leads.de', closeUserId: 'user_RZ3tYRZawQGacSrskWunisLNG4cAU8Dh5yqNUXOszBb', name: 'Felix', team: 'felix', emoji: '👑' },
-  // Team Hendrik (Account 2: Hoffmann)
-  { email: 'o1@hoffmann-wd.de', closeUserId: 'user_jg9rTIVCxTBXUIsbatPhujMADNLR5cj7bHZGNlhg9mC', name: 'Opener 1', team: 'hendrik', emoji: '💎' },
-  { email: 'o2@hoffmann-wd.de', closeUserId: 'user_8aTaFHt8ibP9z2u36XGGebbMVGJpqKcaUgpV78UMAwl', name: 'Opener 2', team: 'hendrik', emoji: '🚀' },
-  { email: 'o3@hoffmann-wd.de', closeUserId: 'user_s3SCQuYijLchWgQBhJSsKH58DfsMcABDptmhto3UAXz', name: 'Opener 3', team: 'hendrik', emoji: '🎯' },
-  { email: 'hendrik@hoffmann-wd.de', closeUserId: 'user_AKQijtNFeJVgnXsqb2Lfpc9VzIpV775r6qDSnLuZYzp', name: 'Hendrik', team: 'hendrik', emoji: '🦁' },
+  { email: 'taha@content-leads.de', closeUserId: 'user_cQBA4gKgHPEiHAtaEtHHdPx1jt73LwL0N9BCvHUG4Nu', name: 'Taha', team: 'felix', emoji: '⚡' },
+  // Team Hendrik — Zuordnung noch offen, placeholder auf Opener 1 + 2
+  { email: 'o1@hoffmann-wd.de', closeUserId: 'user_jg9rTIVCxTBXUIsbatPhujMADNLR5cj7bHZGNlhg9mC', name: 'Karib', team: 'hendrik', emoji: '💎' },
+  { email: 'o2@hoffmann-wd.de', closeUserId: 'user_8aTaFHt8ibP9z2u36XGGebbMVGJpqKcaUgpV78UMAwl', name: 'Renee', team: 'hendrik', emoji: '🚀' },
 ];
+
+// Nur diese 4 E-Mails werden im Dashboard angezeigt
+export const BATTLE_EMAILS = new Set(TEAM_MEMBERS.map(m => m.email));
 
 function getTodayRange(): { start: string; end: string } {
   const now = new Date();
@@ -273,7 +274,8 @@ export async function fetchAllOpenerData(): Promise<OpenerData[]> {
     throw new Error(`Beide Close Accounts nicht erreichbar: ${errors.join(' | ')}`);
   }
 
-  const data = Array.from(merged.values());
+  // Nur die 4 Battle-Caller anzeigen
+  const data = Array.from(merged.values()).filter(o => BATTLE_EMAILS.has(o.email));
   cachedData = { data, timestamp: Date.now() };
   return data;
 }
