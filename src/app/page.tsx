@@ -102,7 +102,7 @@ export default function Dashboard() {
         const idx = VIEWS.indexOf(prev);
         return VIEWS[(idx + 1) % VIEWS.length];
       });
-    }, 15000);
+    }, 20000);
     return () => clearInterval(interval);
   }, []);
 
