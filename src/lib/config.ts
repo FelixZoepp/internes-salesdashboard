@@ -22,8 +22,8 @@ export const BADGES = {
 
 export const CONVERSATION_THRESHOLD_SECONDS = parseInt(process.env.CONVERSATION_THRESHOLD || '60', 10);
 export const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL || '30000', 10);
-export const TEAM_WEEKLY_GOAL = parseInt(process.env.TEAM_WEEKLY_GOAL || '50', 10);
-export const TEAM_DAILY_GOAL = parseInt(process.env.TEAM_DAILY_GOAL || '10', 10);
+export const TEAM_WEEKLY_GOAL = parseInt(process.env.TEAM_WEEKLY_GOAL || '100', 10);
+export const TEAM_DAILY_GOAL = parseInt(process.env.TEAM_DAILY_GOAL || '20', 10);
 export const TIMEZONE = 'Europe/Berlin';
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 export const MOCK_DATA = process.env.MOCK_DATA === 'true';
