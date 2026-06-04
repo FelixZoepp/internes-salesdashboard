@@ -51,7 +51,7 @@ export const TEAM_MEMBERS: TeamMember[] = [
   { email: 'taha@content-leads.de', closeUserId: 'user_cQBA4gKgHPEiHAtaEtHHdPx1jt73LwL0N9BCvHUG4Nu', name: 'Taha', team: 'felix', emoji: '⚡' },
   // Team Hendrik
   { email: 'o3@hoffmann-wd.de', closeUserId: 'user_s3SCQuYijLchWgQBhJSsKH58DfsMcABDptmhto3UAXz', name: 'Karib', team: 'hendrik', emoji: '💎' },
-  { email: 'o2@hoffmann-wd.de', closeUserId: 'user_8aTaFHt8ibP9z2u36XGGebbMVGJpqKcaUgpV78UMAwl', name: 'Renee', team: 'hendrik', emoji: '🚀' },
+  { email: 'o2@hoffmann-wd.de', closeUserId: 'user_8aTaFHt8ibP9z2u36XGGebbMVGJpqKcaUgpV78UMAwl', name: 'Renney', team: 'hendrik', emoji: '🚀' },
 ];
 
 export const BATTLE_EMAILS = new Set(TEAM_MEMBERS.map(m => m.email));
