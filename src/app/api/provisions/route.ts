@@ -14,6 +14,7 @@ interface CloseCustomActivity {
   user_id: string;
   created_by: string;
   date_created: string;
+  [key: string]: unknown;
 }
 
 async function closeFetch<T>(apiKey: string, endpoint: string, params?: Record<string, string>): Promise<T> {
@@ -56,12 +57,25 @@ function getDateRange(period: 'today' | 'week' | 'month'): { start: string; end:
   return { start: startStr, end: tomorrowStr };
 }
 
+interface ColdCallConfig {
+  coldCallTypeId: string;
+  entscheiderFieldId: string;
+  kalenderFieldId: string;
+}
+
 async function fetchActivitiesForPeriod(apiKey: string, start: string, end: string) {
-  // Get activity types
-  const typesData = await closeFetch<{ data: CloseCustomActivityType[] }>(apiKey, '/custom_activity/');
-  const settingTypeIds = new Set<string>();
+  // Get activity types and find Cold Call config
+  const typesData = await closeFetch<{ data: Array<{ id: string; name: string; fields: Array<{ id: string; name: string; type: string }> }> }>(apiKey, '/custom_activity/');
+
+  let config: ColdCallConfig | null = null;
   for (const t of typesData.data) {
-    if (t.name.toLowerCase().includes('setting')) settingTypeIds.add(t.id);
+    if (t.name.toLowerCase().includes('cold call')) {
+      const entscheiderField = t.fields.find(f => f.name.toLowerCase().includes('entscheider'));
+      const kalenderField = t.fields.find(f => f.type === 'datetime' && (f.name.includes('Kalender') || f.name.includes('kalender')));
+      if (entscheiderField && kalenderField) {
+        config = { coldCallTypeId: t.id, entscheiderFieldId: entscheiderField.id, kalenderFieldId: kalenderField.id };
+      }
+    }
   }
 
   // Fetch all custom activities in range
@@ -78,7 +92,7 @@ async function fetchActivitiesForPeriod(apiKey: string, start: string, end: stri
     skip += 100;
   }
 
-  return { activities: allActivities, settingTypeIds };
+  return { activities: allActivities, config };
 }
 
 interface DayStats {
@@ -127,10 +141,18 @@ export async function GET() {
 
     for (const result of results) {
       if (result.status === 'rejected') continue;
-      const { activities, settingTypeIds } = result.value;
+      const { activities, config } = result.value;
+      if (!config) continue;
+
+      const entKey = `custom.${config.entscheiderFieldId}`;
+      const kalKey = `custom.${config.kalenderFieldId}`;
 
       for (const act of activities) {
-        if (!settingTypeIds.has(act.custom_activity_type_id)) continue;
+        if (act.custom_activity_type_id !== config.coldCallTypeId) continue;
+        // Setting = Entscheider contains "Setting vereinbart" AND Kalender has a date
+        const entVal = String(act[entKey] || '').toLowerCase();
+        const kalVal = act[kalKey];
+        if (!entVal.includes('setting vereinbart') || !kalVal) continue;
 
         const userId = act.user_id || act.created_by;
         const member = TEAM_MEMBERS.find(m => m.closeUserId === userId);

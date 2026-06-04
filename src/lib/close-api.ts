@@ -14,11 +14,13 @@ interface CloseCustomActivity {
   created_by: string;
   date_created: string;
   user_name?: string;
+  [key: string]: unknown;
 }
 
 interface CloseCustomActivityType {
   id: string;
   name: string;
+  fields: Array<{ id: string; name: string; type: string }>;
 }
 
 export interface OpenerData {
@@ -34,7 +36,6 @@ export interface OpenerData {
   firstAppointmentTime?: string;
 }
 
-// Hardcoded team mapping — wer sind die Caller die gegeneinander battlen
 export interface TeamMember {
   email: string;
   closeUserId: string;
@@ -43,7 +44,7 @@ export interface TeamMember {
   emoji: string;
 }
 
-// Die 4 Battle-Caller — Karib und Renee werden morgen zugeordnet
+// Die 4 Battle-Caller
 export const TEAM_MEMBERS: TeamMember[] = [
   // Team Felix
   { email: 'johannes@content-leads.de', closeUserId: 'user_mKNHQXqBAlqlizVUnEln7ng516kATkBys7WU96zg0E6', name: 'Johannes', team: 'felix', emoji: '🔥' },
@@ -53,7 +54,6 @@ export const TEAM_MEMBERS: TeamMember[] = [
   { email: 'o2@hoffmann-wd.de', closeUserId: 'user_8aTaFHt8ibP9z2u36XGGebbMVGJpqKcaUgpV78UMAwl', name: 'Renee', team: 'hendrik', emoji: '🚀' },
 ];
 
-// Nur diese 4 E-Mails werden im Dashboard angezeigt
 export const BATTLE_EMAILS = new Set(TEAM_MEMBERS.map(m => m.email));
 
 function getTodayRange(): { start: string; end: string } {
@@ -63,11 +63,7 @@ function getTodayRange(): { start: string; end: string } {
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(tomorrow);
-  // Close API works best with simple date strings (no timezone offset)
-  return {
-    start: todayStr,
-    end: tomorrowStr,
-  };
+  return { start: todayStr, end: tomorrowStr };
 }
 
 class CloseClient {
@@ -82,9 +78,7 @@ class CloseClient {
 
   private async apiFetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
     const url = new URL(`${this.baseUrl}${endpoint}`);
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-    }
+    if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
     const res = await fetch(url.toString(), {
       headers: {
@@ -95,14 +89,13 @@ class CloseClient {
 
     if (res.status === 429) {
       const retryAfter = parseInt(res.headers.get('retry-after') || '5', 10);
-      console.warn(`Close API rate limited (${this.label}), retrying in ${retryAfter}s`);
       await new Promise(r => setTimeout(r, retryAfter * 1000));
       return this.apiFetch<T>(endpoint, params);
     }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`Close API error (${this.label}): ${res.status} ${res.statusText} - ${body.slice(0, 200)}`);
+      throw new Error(`Close API error (${this.label}): ${res.status} - ${body.slice(0, 200)}`);
     }
 
     return res.json() as Promise<T>;
@@ -114,68 +107,52 @@ class CloseClient {
   }
 
   /**
-   * Get Custom Activity Type name->id mapping
-   * Endpoint: /custom_activity/ (not /custom_activity/type/)
+   * Find the Cold Call activity type config.
+   * A Setting = Cold Call Protokoll where:
+   *   - "Entscheider" choices field = "Setting vereinbart am:"
+   *   - "Kalender" datetime field has the appointment date
    */
-  async getCustomActivityTypes(): Promise<Map<string, string>> {
+  async getColdCallConfig(): Promise<{ coldCallTypeId: string; entscheiderFieldId: string; kalenderFieldId: string } | null> {
     const data = await this.apiFetch<{ data: CloseCustomActivityType[] }>('/custom_activity/');
-    const map = new Map<string, string>();
     for (const t of data.data) {
-      map.set(t.id, t.name);
-      console.log(`[${this.label}] Activity Type: ${t.id} = "${t.name}"`);
+      if (t.name.toLowerCase().includes('cold call')) {
+        const entscheiderField = t.fields.find(f => f.name.toLowerCase().includes('entscheider'));
+        const kalenderField = t.fields.find(f => f.type === 'datetime' && (f.name.includes('Kalender') || f.name.includes('kalender')));
+        if (entscheiderField && kalenderField) {
+          console.log(`[${this.label}] Cold Call: ${t.id}, Entscheider: ${entscheiderField.id}, Kalender: ${kalenderField.id}`);
+          return { coldCallTypeId: t.id, entscheiderFieldId: entscheiderField.id, kalenderFieldId: kalenderField.id };
+        }
+      }
     }
-    return map;
+    console.warn(`[${this.label}] Cold Call config not found`);
+    return null;
   }
 
-  /**
-   * Fetch all custom activities for today
-   * The activity type name tells us what it is:
-   * - "1 - Gesprächsprotokoll (Cold Call)" = Anwahl/Dial
-   * - "2 - Gesprächsprotokoll (Setting)" = Termin/Setting vereinbart
-   */
-  async getTodayCustomActivities(): Promise<CloseCustomActivity[]> {
+  async getTodayActivities(): Promise<CloseCustomActivity[]> {
     const { start, end } = getTodayRange();
     const allActivities: CloseCustomActivity[] = [];
     let hasMore = true;
     let skip = 0;
-    const limit = 100;
 
     while (hasMore) {
       const data = await this.apiFetch<{ data: CloseCustomActivity[]; has_more: boolean }>(
         '/activity/custom/',
-        {
-          date_created__gte: start,
-          date_created__lte: end,
-          _skip: skip.toString(),
-          _limit: limit.toString(),
-        }
+        { date_created__gte: start, date_created__lte: end, _skip: skip.toString(), _limit: '100' }
       );
       allActivities.push(...data.data);
       hasMore = data.has_more;
-      skip += limit;
+      skip += 100;
     }
     return allActivities;
   }
 
   async getOpenerData(): Promise<OpenerData[]> {
-    const [users, activityTypes, todayActivities] = await Promise.all([
+    const [users, coldCallConfig, todayActivities] = await Promise.all([
       this.getUsers(),
-      this.getCustomActivityTypes(),
-      this.getTodayCustomActivities(),
+      this.getColdCallConfig(),
+      this.getTodayActivities(),
     ]);
 
-    // Build type id -> category mapping
-    const typeCategory = new Map<string, 'dial' | 'setting'>();
-    for (const [id, name] of activityTypes) {
-      const lower = name.toLowerCase();
-      if (lower.includes('cold call') || lower.includes('protokoll')) {
-        typeCategory.set(id, 'dial');
-      } else if (lower.includes('setting')) {
-        typeCategory.set(id, 'setting');
-      }
-    }
-
-    // Build opener map
     const openerMap = new Map<string, OpenerData>();
     for (const user of users) {
       openerMap.set(user.id, {
@@ -191,16 +168,26 @@ class CloseClient {
       });
     }
 
-    // Count activities per user
+    if (!coldCallConfig) return Array.from(openerMap.values());
+
+    const { coldCallTypeId, entscheiderFieldId, kalenderFieldId } = coldCallConfig;
+    const entscheiderKey = `custom.${entscheiderFieldId}`;
+    const kalenderKey = `custom.${kalenderFieldId}`;
+
     for (const activity of todayActivities) {
+      if (activity.custom_activity_type_id !== coldCallTypeId) continue;
+
       const userId = activity.user_id || activity.created_by;
       const opener = openerMap.get(userId);
       if (!opener) continue;
 
-      const category = typeCategory.get(activity.custom_activity_type_id);
-      if (category === 'dial') {
-        opener.dials++;
-      } else if (category === 'setting') {
+      // Every Cold Call protocol = 1 Dial
+      opener.dials++;
+
+      // Setting = Entscheider field contains "Setting vereinbart am:" AND Kalender has a date
+      const entscheiderValue = String(activity[entscheiderKey] || '').toLowerCase();
+      const kalenderValue = activity[kalenderKey];
+      if (entscheiderValue.includes('setting vereinbart') && kalenderValue) {
         opener.appointments++;
         if (!opener.firstAppointmentTime || activity.date_created < opener.firstAppointmentTime) {
           opener.firstAppointmentTime = activity.date_created;
@@ -208,10 +195,10 @@ class CloseClient {
       }
     }
 
-    console.log(`[${this.label}] Today: ${todayActivities.length} total custom activities`);
+    console.log(`[${this.label}] Today: ${todayActivities.length} activities`);
     for (const opener of openerMap.values()) {
       if (opener.dials > 0 || opener.appointments > 0) {
-        console.log(`  ${opener.name}: ${opener.dials} dials, ${opener.appointments} settings`);
+        console.log(`  ${opener.name}: ${opener.dials} Protokolle, ${opener.appointments} Settings`);
       }
     }
 
@@ -228,43 +215,32 @@ export async function fetchAllOpenerData(): Promise<OpenerData[]> {
   }
 
   const clients: CloseClient[] = [];
-  if (process.env.CLOSE_API_KEY_1) {
-    clients.push(new CloseClient(process.env.CLOSE_API_KEY_1, process.env.CLOSE_LABEL_1 || 'Account 1'));
-  }
-  if (process.env.CLOSE_API_KEY_2) {
-    clients.push(new CloseClient(process.env.CLOSE_API_KEY_2, process.env.CLOSE_LABEL_2 || 'Account 2'));
-  }
+  if (process.env.CLOSE_API_KEY_1) clients.push(new CloseClient(process.env.CLOSE_API_KEY_1, process.env.CLOSE_LABEL_1 || 'Account 1'));
+  if (process.env.CLOSE_API_KEY_2) clients.push(new CloseClient(process.env.CLOSE_API_KEY_2, process.env.CLOSE_LABEL_2 || 'Account 2'));
 
-  if (clients.length === 0) {
-    throw new Error('Keine Close API Keys konfiguriert');
-  }
+  if (clients.length === 0) throw new Error('Keine Close API Keys konfiguriert');
 
-  console.log(`Fetching data from ${clients.length} Close accounts...`);
   const results = await Promise.allSettled(clients.map(c => c.getOpenerData()));
 
   const errors: string[] = [];
   const merged = new Map<string, OpenerData>();
   for (const result of results) {
     if (result.status === 'rejected') {
-      const errMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
-      console.error('Close API fetch failed:', errMsg);
-      errors.push(errMsg);
+      errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
       continue;
     }
     for (const opener of result.value) {
-      // Use team member mapping for name/email if available
       const teamMember = TEAM_MEMBERS.find(m => m.closeUserId === opener.closeUserId);
       const key = teamMember?.email || opener.email;
       const existing = merged.get(key);
       if (existing) {
         existing.dials += opener.dials;
         existing.appointments += opener.appointments;
+        if (opener.firstAppointmentTime && (!existing.firstAppointmentTime || opener.firstAppointmentTime < existing.firstAppointmentTime)) {
+          existing.firstAppointmentTime = opener.firstAppointmentTime;
+        }
       } else {
-        merged.set(key, {
-          ...opener,
-          name: teamMember?.name || opener.name,
-          email: key,
-        });
+        merged.set(key, { ...opener, name: teamMember?.name || opener.name, email: key });
       }
     }
   }
@@ -273,7 +249,7 @@ export async function fetchAllOpenerData(): Promise<OpenerData[]> {
     throw new Error(`Beide Close Accounts nicht erreichbar: ${errors.join(' | ')}`);
   }
 
-  // Nur die 4 Battle-Caller anzeigen
+  // Only show battle callers
   const data = Array.from(merged.values()).filter(o => BATTLE_EMAILS.has(o.email));
   cachedData = { data, timestamp: Date.now() };
   return data;
