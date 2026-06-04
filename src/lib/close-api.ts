@@ -48,8 +48,8 @@ export const TEAM_MEMBERS: TeamMember[] = [
   // Team Felix
   { email: 'johannes@content-leads.de', closeUserId: 'user_mKNHQXqBAlqlizVUnEln7ng516kATkBys7WU96zg0E6', name: 'Johannes', team: 'felix', emoji: '🔥' },
   { email: 'taha@content-leads.de', closeUserId: 'user_cQBA4gKgHPEiHAtaEtHHdPx1jt73LwL0N9BCvHUG4Nu', name: 'Taha', team: 'felix', emoji: '⚡' },
-  // Team Hendrik — Zuordnung noch offen, placeholder auf Opener 1 + 2
-  { email: 'o1@hoffmann-wd.de', closeUserId: 'user_jg9rTIVCxTBXUIsbatPhujMADNLR5cj7bHZGNlhg9mC', name: 'Karib', team: 'hendrik', emoji: '💎' },
+  // Team Hendrik
+  { email: 'o3@hoffmann-wd.de', closeUserId: 'user_s3SCQuYijLchWgQBhJSsKH58DfsMcABDptmhto3UAXz', name: 'Karib', team: 'hendrik', emoji: '💎' },
   { email: 'o2@hoffmann-wd.de', closeUserId: 'user_8aTaFHt8ibP9z2u36XGGebbMVGJpqKcaUgpV78UMAwl', name: 'Renee', team: 'hendrik', emoji: '🚀' },
 ];
 
@@ -60,14 +60,13 @@ function getTodayRange(): { start: string; end: string } {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE });
   const todayStr = formatter.format(now);
-  // Use simple approach: check if DST (CEST = +02:00) or not (CET = +01:00)
-  // Berlin is UTC+2 from last Sunday of March to last Sunday of October
-  const month = now.getMonth(); // 0-indexed
-  const isCEST = month >= 2 && month <= 9; // March-October (roughly)
-  const offset = isCEST ? '+02:00' : '+01:00';
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(tomorrow);
+  // Close API works best with simple date strings (no timezone offset)
   return {
-    start: `${todayStr}T00:00:00${offset}`,
-    end: `${todayStr}T23:59:59${offset}`,
+    start: todayStr,
+    end: tomorrowStr,
   };
 }
 

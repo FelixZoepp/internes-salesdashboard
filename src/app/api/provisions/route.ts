@@ -29,35 +29,31 @@ async function closeFetch<T>(apiKey: string, endpoint: string, params?: Record<s
   return res.json() as Promise<T>;
 }
 
-function getDateRange(period: 'week' | 'month'): { start: string; end: string } {
+function getDateRange(period: 'today' | 'week' | 'month'): { start: string; end: string } {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE });
   const todayStr = formatter.format(now);
-
-  // Get Berlin date parts
   const berlinDate = new Date(now.toLocaleString('en-US', { timeZone: TIMEZONE }));
-  const month = berlinDate.getMonth();
-  const isCEST = month >= 2 && month <= 9;
-  const offset = isCEST ? '+02:00' : '+01:00';
+  const tomorrow = new Date(berlinDate);
+  tomorrow.setDate(berlinDate.getDate() + 1);
+  const tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(tomorrow);
 
   let startStr: string;
 
-  if (period === 'week') {
-    // Monday of current week
+  if (period === 'today') {
+    startStr = todayStr;
+  } else if (period === 'week') {
     const dayOfWeek = berlinDate.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const monday = new Date(berlinDate);
     monday.setDate(berlinDate.getDate() + mondayOffset);
     startStr = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(monday);
   } else {
-    // 1st of current month
     startStr = `${todayStr.slice(0, 8)}01`;
   }
 
-  return {
-    start: `${startStr}T00:00:00${offset}`,
-    end: `${todayStr}T23:59:59${offset}`,
-  };
+  // Close API works best with simple date strings (no timezone offset)
+  return { start: startStr, end: tomorrowStr };
 }
 
 async function fetchActivitiesForPeriod(apiKey: string, start: string, end: string) {
@@ -155,13 +151,17 @@ export async function GET() {
     }
 
     // Calculate provisions per opener
+    const todayRange = getDateRange('today');
+    const todayStr = todayRange.start.slice(0, 10);
     const weekStart = weekRange.start.slice(0, 10);
     const monthStart = monthRange.start.slice(0, 10);
 
     const provisions = TEAM_MEMBERS.filter(m => BATTLE_EMAILS.has(m.email)).map(member => {
       const dayMap = userDayMap.get(member.email) || new Map();
+      let todayBonus = 0;
       let weekBonus = 0;
       let monthBonus = 0;
+      const todayDetails: Array<{ date: string; appointments: number; bonus: number; incentives: string[] }> = [];
       const weekDetails: Array<{ date: string; appointments: number; bonus: number; incentives: string[] }> = [];
       const monthDetails: Array<{ date: string; appointments: number; bonus: number; incentives: string[] }> = [];
 
@@ -182,9 +182,13 @@ export async function GET() {
           weekBonus += bonus;
           weekDetails.push(detail);
         }
+        if (dateStr === todayStr) {
+          todayBonus += bonus;
+          todayDetails.push(detail);
+        }
       }
 
-      // Sort by date
+      todayDetails.sort((a, b) => a.date.localeCompare(b.date));
       weekDetails.sort((a, b) => a.date.localeCompare(b.date));
       monthDetails.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -193,10 +197,13 @@ export async function GET() {
         name: member.name,
         emoji: member.emoji,
         team: member.team,
+        todayBonus,
         weekBonus,
         monthBonus,
+        todaySettings: todayDetails.reduce((s, d) => s + d.appointments, 0),
         weekSettings: weekDetails.reduce((s, d) => s + d.appointments, 0),
         monthSettings: monthDetails.reduce((s, d) => s + d.appointments, 0),
+        todayDetails,
         weekDetails,
         monthDetails,
       };
@@ -205,6 +212,7 @@ export async function GET() {
     const data = {
       provisions,
       totals: {
+        todayBonus: provisions.reduce((s, p) => s + p.todayBonus, 0),
         weekBonus: provisions.reduce((s, p) => s + p.weekBonus, 0),
         monthBonus: provisions.reduce((s, p) => s + p.monthBonus, 0),
       },

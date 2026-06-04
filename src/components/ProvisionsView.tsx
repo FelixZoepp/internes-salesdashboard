@@ -9,15 +9,18 @@ interface ProvisionData {
   team: string;
   weekBonus: number;
   monthBonus: number;
+  todayBonus: number;
   weekSettings: number;
   monthSettings: number;
+  todaySettings: number;
   weekDetails: Array<{ date: string; appointments: number; bonus: number; incentives: string[] }>;
   monthDetails: Array<{ date: string; appointments: number; bonus: number; incentives: string[] }>;
+  todayDetails: Array<{ date: string; appointments: number; bonus: number; incentives: string[] }>;
 }
 
 interface ProvisionsResponse {
   provisions: ProvisionData[];
-  totals: { weekBonus: number; monthBonus: number };
+  totals: { weekBonus: number; monthBonus: number; todayBonus: number };
 }
 
 const INCENTIVE_EMOJIS: Record<string, string> = {
@@ -28,7 +31,7 @@ const INCENTIVE_EMOJIS: Record<string, string> = {
 
 export default function ProvisionsView() {
   const [data, setData] = useState<ProvisionsResponse | null>(null);
-  const [tab, setTab] = useState<'week' | 'month'>('week');
+  const [tab, setTab] = useState<'today' | 'week' | 'month'>('today');
 
   useEffect(() => {
     fetch('/api/provisions')
@@ -45,7 +48,12 @@ export default function ProvisionsView() {
     );
   }
 
-  const maxBonus = Math.max(...data.provisions.map(p => tab === 'week' ? p.weekBonus : p.monthBonus), 1);
+  const getBonus = (p: ProvisionData) => tab === 'today' ? p.todayBonus : tab === 'week' ? p.weekBonus : p.monthBonus;
+  const getSettings = (p: ProvisionData) => tab === 'today' ? p.todaySettings : tab === 'week' ? p.weekSettings : p.monthSettings;
+  const getDetails = (p: ProvisionData) => tab === 'today' ? p.todayDetails : tab === 'week' ? p.weekDetails : p.monthDetails;
+  const totalBonus = tab === 'today' ? data.totals.todayBonus : tab === 'week' ? data.totals.weekBonus : data.totals.monthBonus;
+  const maxBonus = Math.max(...data.provisions.map(getBonus), 1);
+  const periodLabel = tab === 'today' ? 'heute' : tab === 'week' ? 'diese Woche' : 'dieser Monat';
 
   return (
     <div className="h-full flex flex-col gap-6">
@@ -59,47 +67,40 @@ export default function ProvisionsView() {
           </div>
         </div>
 
-        {/* Week / Month toggle */}
+        {/* Today / Week / Month toggle */}
         <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--za-bg-2)', border: '1px solid var(--za-panel-border)' }}>
-          <button
-            onClick={() => setTab('week')}
-            className="px-5 py-2 rounded-lg text-lg font-bold transition-all"
-            style={{
-              background: tab === 'week' ? 'var(--za-blue-1)' : 'transparent',
-              color: tab === 'week' ? 'var(--za-fg)' : 'var(--za-fg-4)',
-            }}
-          >
-            Diese Woche
-          </button>
-          <button
-            onClick={() => setTab('month')}
-            className="px-5 py-2 rounded-lg text-lg font-bold transition-all"
-            style={{
-              background: tab === 'month' ? 'var(--za-blue-1)' : 'transparent',
-              color: tab === 'month' ? 'var(--za-fg)' : 'var(--za-fg-4)',
-            }}
-          >
-            Dieser Monat
-          </button>
+          {(['today', 'week', 'month'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className="px-4 py-2 rounded-lg text-base font-bold transition-all"
+              style={{
+                background: tab === t ? 'var(--za-blue-1)' : 'transparent',
+                color: tab === t ? 'var(--za-fg)' : 'var(--za-fg-4)',
+              }}
+            >
+              {t === 'today' ? 'Heute' : t === 'week' ? 'Woche' : 'Monat'}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Total */}
       <div className="text-center animate-fade-up" style={{ animationDelay: '100ms' }}>
         <div className="text-6xl font-black" style={{ color: 'var(--za-green)' }}>
-          €{tab === 'week' ? data.totals.weekBonus : data.totals.monthBonus}
+          €{totalBonus}
         </div>
         <div className="text-lg font-semibold" style={{ color: 'var(--za-fg-3)' }}>
-          Gesamt {tab === 'week' ? 'diese Woche' : 'dieser Monat'}
+          Gesamt {periodLabel}
         </div>
       </div>
 
       {/* Per opener */}
       <div className="flex-1 flex flex-col justify-center gap-5">
         {data.provisions.map((p, idx) => {
-          const bonus = tab === 'week' ? p.weekBonus : p.monthBonus;
-          const settings = tab === 'week' ? p.weekSettings : p.monthSettings;
-          const details = tab === 'week' ? p.weekDetails : p.monthDetails;
+          const bonus = getBonus(p);
+          const settings = getSettings(p);
+          const details = getDetails(p);
           const pct = maxBonus > 0 ? (bonus / maxBonus) * 100 : 0;
 
           return (
@@ -117,7 +118,6 @@ export default function ProvisionsView() {
                 <span className="text-base" style={{ color: 'var(--za-fg-3)' }}>
                   {settings} Settings
                 </span>
-                {/* Day-by-day trophies */}
                 <div className="flex gap-1">
                   {details.flatMap(d => d.incentives.map((inc, i) => (
                     <span key={`${d.date}-${i}`} className="text-lg">{INCENTIVE_EMOJIS[inc] || '🏆'}</span>
