@@ -7,6 +7,7 @@ import AppointmentOverlay from '@/components/AppointmentOverlay';
 import SoundManager from '@/components/SoundManager';
 import RaceView from '@/components/RaceView';
 import TeamBattle from '@/components/TeamBattle';
+import ProvisionsView from '@/components/ProvisionsView';
 
 interface DashboardData {
   openers: Array<{
@@ -43,8 +44,8 @@ interface DashboardData {
   timestamp: number;
 }
 
-type ViewMode = 'race-dials' | 'race-appointments' | 'team-battle';
-const VIEWS: ViewMode[] = ['race-dials', 'race-appointments', 'team-battle'];
+type ViewMode = 'race-dials' | 'race-appointments' | 'team-battle' | 'provisions';
+const VIEWS: ViewMode[] = ['race-dials', 'race-appointments', 'team-battle', 'provisions'];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -172,7 +173,7 @@ export default function Dashboard() {
                     color: viewMode === view ? 'var(--za-fg)' : 'var(--za-fg-4)',
                   }}
                 >
-                  {view === 'race-dials' ? '📞 Protokolle' : view === 'race-appointments' ? '📅 Settings' : '⚔️ Battle'}
+                  {view === 'race-dials' ? '📞 Protokolle' : view === 'race-appointments' ? '📅 Settings' : view === 'team-battle' ? '⚔️ Battle' : '💰 Provis'}
                 </button>
               ))}
             </div>
@@ -217,6 +218,11 @@ export default function Dashboard() {
         {viewMode === 'team-battle' && data.teamStats.teams && (
           <div className="animate-fade-up h-full" key="team-battle">
             <TeamBattle teams={data.teamStats.teams} openers={data.openers} />
+          </div>
+        )}
+        {viewMode === 'provisions' && (
+          <div className="animate-fade-up h-full" key="provisions">
+            <ProvisionsView />
           </div>
         )}
       </main>
