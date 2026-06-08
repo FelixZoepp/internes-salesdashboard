@@ -206,6 +206,55 @@ class CloseClient {
   }
 }
 
+export interface WonDeal {
+  name: string;
+  value: number;
+  user: string;
+  date: string;
+}
+
+let cachedWonDeals: { data: WonDeal[]; timestamp: number } | null = null;
+const WON_DEALS_CACHE_TTL = 30000;
+
+export async function fetchTodayWonDeals(): Promise<WonDeal[]> {
+  if (cachedWonDeals && Date.now() - cachedWonDeals.timestamp < WON_DEALS_CACHE_TTL) {
+    return cachedWonDeals.data;
+  }
+
+  const apiKey = process.env.CLOSE_API_KEY_1;
+  if (!apiKey) return [];
+
+  try {
+    const now = new Date();
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(now);
+    const url = new URL('https://api.close.com/api/v1/opportunity/');
+    url.searchParams.set('date_won__gte', todayStr);
+    url.searchParams.set('status_type', 'won');
+    url.searchParams.set('_limit', '20');
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    const deals: WonDeal[] = (data.data || []).map((opp: any) => ({
+      name: opp.lead_name || opp.contact_name || 'Unbekannt',
+      value: (opp.value || 0) / 100,
+      user: opp.user_name || 'Unbekannt',
+      date: opp.date_won || todayStr,
+    }));
+
+    cachedWonDeals = { data: deals, timestamp: Date.now() };
+    return deals;
+  } catch {
+    return [];
+  }
+}
+
 let cachedData: { data: OpenerData[]; timestamp: number } | null = null;
 const CACHE_TTL = 15000;
 
@@ -247,6 +296,15 @@ export async function fetchAllOpenerData(): Promise<OpenerData[]> {
 
   if (merged.size === 0 && results.every(r => r.status === 'rejected')) {
     throw new Error(`Beide Close Accounts nicht erreichbar: ${errors.join(' | ')}`);
+  }
+
+  // One-time fix 2026-06-08: Taha made 54 Protokolle from Felix's account
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+  if (todayStr === '2026-06-08') {
+    const taha = merged.get('taha@content-leads.de');
+    if (taha) {
+      taha.dials += 54;
+    }
   }
 
   // Only show battle callers
