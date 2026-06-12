@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { fetchAllOpenerData, OpenerData, TEAM_MEMBERS } from '@/lib/close-api';
+import { fetchAllOpenerData, OpenerData, TEAM_MEMBERS, BATTLE_EMAILS, fetchTodayWonDeals, WonDeal } from '@/lib/close-api';
 import { getMockData, calculatePoints, MOCK_AVATARS } from '@/lib/mock-data';
-import { MOCK_DATA, LEVELS, TEAM_DAILY_GOAL, TEAM_WEEKLY_GOAL } from '@/lib/config';
+import { MOCK_DATA, LEVELS, TEAM_DAILY_GOAL, TEAM_WEEKLY_GOAL, TIMEZONE } from '@/lib/config';
 import { INCENTIVES } from '@/lib/incentives';
 
 function getLevel(points: number) {
@@ -24,13 +24,39 @@ export async function GET() {
       rawData = await fetchAllOpenerData();
     }
 
+    // Early Bird: nur der ERSTE Opener des Tages mit Setting vor 10 Uhr bekommt den Bonus
+    let earlyBirdWinnerEmail: string | null = null;
+    {
+      let earliestTime: string | null = null;
+      for (const o of rawData) {
+        if (!o.firstAppointmentTime) continue;
+        const hours = parseInt(
+          new Intl.DateTimeFormat('en', { hour: 'numeric', hour12: false, timeZone: TIMEZONE }).format(new Date(o.firstAppointmentTime))
+        );
+        if (hours < 10) {
+          if (!earliestTime || o.firstAppointmentTime < earliestTime) {
+            earliestTime = o.firstAppointmentTime;
+            earlyBirdWinnerEmail = o.email;
+          }
+        }
+      }
+    }
+
     const enriched = rawData.map(o => {
       const points = calculatePoints(o);
       const level = getLevel(points);
       const teamMember = TEAM_MEMBERS.find(m => m.email === o.email || m.closeUserId === o.closeUserId);
-      const earnedIncentives = INCENTIVES.filter(inc =>
-        inc.check({ appointments: o.appointments, firstAppointmentTime: o.firstAppointmentTime })
-      ).map(inc => ({ id: inc.id, emoji: inc.emoji, title: inc.title, bonus: inc.bonus }));
+      const earnedIncentives: Array<{ id: string; emoji: string; title: string; bonus: string }> = [];
+      const exclusiveGroupUsed = new Set<string>();
+      // Early Bird nur für den Ersten des Tages
+      const effectiveFirstTime = o.email === earlyBirdWinnerEmail ? o.firstAppointmentTime : undefined;
+      for (const inc of INCENTIVES) {
+        if (inc.check({ appointments: o.appointments, firstAppointmentTime: effectiveFirstTime })) {
+          if (inc.exclusive && exclusiveGroupUsed.has(inc.exclusive)) continue;
+          if (inc.exclusive) exclusiveGroupUsed.add(inc.exclusive);
+          earnedIncentives.push({ id: inc.id, emoji: inc.emoji, title: inc.title, bonus: inc.bonus });
+        }
+      }
       return {
         ...o,
         points,
@@ -105,7 +131,13 @@ export async function GET() {
       },
     };
 
-    return NextResponse.json({ openers: enriched, teamStats, events, timestamp: now });
+    // Fetch today's won deals
+    let wonDeals: WonDeal[] = [];
+    if (!MOCK_DATA) {
+      try { wonDeals = await fetchTodayWonDeals(); } catch { /* ignore */ }
+    }
+
+    return NextResponse.json({ openers: enriched, teamStats, events, wonDeals, timestamp: now });
   } catch (error) {
     console.error('Dashboard API error:', error);
     return NextResponse.json(

@@ -104,8 +104,14 @@ interface DayStats {
 function calculateDailyIncentives(dayStats: DayStats): { earned: string[]; bonus: number } {
   const earned: string[] = [];
   let bonus = 0;
+  const exclusiveGroupUsed = new Set<string>();
+
   for (const inc of INCENTIVES) {
     if (inc.check({ appointments: dayStats.appointments, firstAppointmentTime: dayStats.firstAppointmentTime })) {
+      // Skip if an exclusive group member already triggered (first match wins = highest tier)
+      if (inc.exclusive && exclusiveGroupUsed.has(inc.exclusive)) continue;
+      if (inc.exclusive) exclusiveGroupUsed.add(inc.exclusive);
+
       earned.push(inc.id);
       const match = inc.bonus.match(/(\d+)/);
       if (match) bonus += parseInt(match[1]);
@@ -160,6 +166,11 @@ export async function GET() {
 
         const dateStr = new Date(act.date_created).toLocaleDateString('en-CA', { timeZone: TIMEZONE });
 
+        // Skip weekends — no bonuses on Sat/Sun
+        const actDate = new Date(dateStr + 'T12:00:00');
+        const dayOfWeek = actDate.getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
         if (!userDayMap.has(member.email)) userDayMap.set(member.email, new Map());
         const dayMap = userDayMap.get(member.email)!;
         if (!dayMap.has(dateStr)) dayMap.set(dateStr, { appointments: 0 });
@@ -178,6 +189,42 @@ export async function GET() {
     const weekStart = weekRange.start.slice(0, 10);
     const monthStart = monthRange.start.slice(0, 10);
 
+    // Early Bird: nur der ERSTE Opener pro Tag bekommt den €10 Bonus
+    // Sammle pro Tag die früheste firstTime über alle User
+    const earlyBirdWinnerPerDay = new Map<string, string>(); // date -> email des Ersten
+    for (const [email, dayMap] of userDayMap) {
+      for (const [dateStr, stats] of dayMap) {
+        if (!stats.firstTime) continue;
+        const currentWinner = earlyBirdWinnerPerDay.get(dateStr);
+        if (!currentWinner) {
+          // Prüfe ob die Zeit überhaupt vor 10 Uhr ist
+          const hours = parseInt(
+            new Intl.DateTimeFormat('en', { hour: 'numeric', hour12: false, timeZone: TIMEZONE }).format(new Date(stats.firstTime))
+          );
+          if (hours < 10) {
+            earlyBirdWinnerPerDay.set(dateStr, email);
+          }
+        } else {
+          // Vergleiche mit aktuellem Winner
+          const currentWinnerTime = (() => {
+            for (const [e, dm] of userDayMap) {
+              if (e === currentWinner) return dm.get(dateStr)?.firstTime;
+            }
+            return undefined;
+          })();
+          if (currentWinnerTime && stats.firstTime < currentWinnerTime) {
+            // Neuer Winner — prüfe ob vor 10 Uhr
+            const hours = parseInt(
+              new Intl.DateTimeFormat('en', { hour: 'numeric', hour12: false, timeZone: TIMEZONE }).format(new Date(stats.firstTime))
+            );
+            if (hours < 10) {
+              earlyBirdWinnerPerDay.set(dateStr, email);
+            }
+          }
+        }
+      }
+    }
+
     const provisions = TEAM_MEMBERS.filter(m => BATTLE_EMAILS.has(m.email)).map(member => {
       const dayMap = userDayMap.get(member.email) || new Map();
       let todayBonus = 0;
@@ -188,10 +235,12 @@ export async function GET() {
       const monthDetails: Array<{ date: string; appointments: number; bonus: number; incentives: string[] }> = [];
 
       for (const [dateStr, stats] of dayMap) {
+        // Early Bird nur für den Ersten des Tages — sonst firstTime entfernen
+        const isEarlyBirdWinner = earlyBirdWinnerPerDay.get(dateStr) === member.email;
         const { earned, bonus } = calculateDailyIncentives({
           date: dateStr,
           appointments: stats.appointments,
-          firstAppointmentTime: stats.firstTime,
+          firstAppointmentTime: isEarlyBirdWinner ? stats.firstTime : undefined,
         });
 
         const detail = { date: dateStr, appointments: stats.appointments, bonus, incentives: earned };

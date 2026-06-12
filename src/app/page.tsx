@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import TeamGoalBar from '@/components/TeamGoalBar';
 import EventTicker from '@/components/EventTicker';
 import AppointmentOverlay from '@/components/AppointmentOverlay';
@@ -8,6 +8,15 @@ import SoundManager from '@/components/SoundManager';
 import RaceView from '@/components/RaceView';
 import TeamBattle from '@/components/TeamBattle';
 import ProvisionsView from '@/components/ProvisionsView';
+import LeaderboardView from '@/components/LeaderboardView';
+import DealWonOverlay from '@/components/DealWonOverlay';
+
+interface WonDeal {
+  name: string;
+  value: number;
+  user: string;
+  date: string;
+}
 
 interface DashboardData {
   openers: Array<{
@@ -41,17 +50,20 @@ interface DashboardData {
     };
   };
   events: Array<{ type: string; message: string; timestamp: number; openerName: string }>;
+  wonDeals: WonDeal[];
   timestamp: number;
 }
 
-type ViewMode = 'race-dials' | 'race-appointments' | 'team-battle' | 'provisions';
-const VIEWS: ViewMode[] = ['race-dials', 'race-appointments', 'team-battle', 'provisions'];
+type ViewMode = 'race-dials' | 'race-appointments' | 'leaderboard' | 'team-battle' | 'provisions';
+const VIEWS: ViewMode[] = ['race-dials', 'race-appointments', 'leaderboard', 'team-battle', 'provisions'];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('race-dials');
   const [overlay, setOverlay] = useState<{ name: string; emoji: string } | null>(null);
+  const [dealOverlay, setDealOverlay] = useState<WonDeal | null>(null);
+  const shownDealsRef = useRef<Set<string>>(new Set());
   const [allEvents, setAllEvents] = useState<Array<{ type: string; message: string; timestamp: number; openerName: string }>>([]);
   const [timeStr, setTimeStr] = useState('');
   const [dateStr, setDateStr] = useState('');
@@ -71,6 +83,18 @@ export default function Dashboard() {
           setOverlay({ name: appointmentEvent.openerName, emoji: opener?.avatarEmoji || '🎯' });
         }
         setAllEvents(prev => [...json.events, ...prev].slice(0, 50));
+      }
+
+      // Check for new won deals
+      if (json.wonDeals?.length > 0) {
+        for (const deal of json.wonDeals) {
+          const dealKey = `${deal.name}-${deal.value}-${deal.date}`;
+          if (!shownDealsRef.current.has(dealKey)) {
+            shownDealsRef.current.add(dealKey);
+            setDealOverlay(deal);
+            break;
+          }
+        }
       }
     } catch {
       setError('Dashboard konnte nicht geladen werden');
@@ -173,7 +197,7 @@ export default function Dashboard() {
                     color: viewMode === view ? 'var(--za-fg)' : 'var(--za-fg-4)',
                   }}
                 >
-                  {view === 'race-dials' ? '📞 Protokolle' : view === 'race-appointments' ? '📅 Settings' : view === 'team-battle' ? '⚔️ Battle' : '💰 Provis'}
+                  {view === 'race-dials' ? '📞 Protokolle' : view === 'race-appointments' ? '📅 Settings' : view === 'leaderboard' ? '🏆 Punkte' : view === 'team-battle' ? '⚔️ Battle' : '💰 Provis'}
                 </button>
               ))}
             </div>
@@ -215,6 +239,11 @@ export default function Dashboard() {
             <RaceView openers={data.openers} metric="appointments" />
           </div>
         )}
+        {viewMode === 'leaderboard' && (
+          <div className="animate-fade-up h-full" key="leaderboard">
+            <LeaderboardView openers={data.openers} />
+          </div>
+        )}
         {viewMode === 'team-battle' && data.teamStats.teams && (
           <div className="animate-fade-up h-full" key="team-battle">
             <TeamBattle teams={data.teamStats.teams} openers={data.openers} />
@@ -241,6 +270,16 @@ export default function Dashboard() {
           openerName={overlay.name}
           emoji={overlay.emoji}
           onComplete={() => setOverlay(null)}
+        />
+      )}
+
+      {/* Deal Won Overlay */}
+      {dealOverlay && (
+        <DealWonOverlay
+          dealName={dealOverlay.name}
+          dealValue={dealOverlay.value}
+          closerName={dealOverlay.user}
+          onComplete={() => setDealOverlay(null)}
         />
       )}
 

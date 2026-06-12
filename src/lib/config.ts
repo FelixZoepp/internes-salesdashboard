@@ -1,7 +1,7 @@
 export const POINTS = {
   DIAL: 1,
   CONVERSATION: 5,
-  APPOINTMENT: 25,
+  APPOINTMENT: 50,
 } as const;
 
 export const LEVELS = [
